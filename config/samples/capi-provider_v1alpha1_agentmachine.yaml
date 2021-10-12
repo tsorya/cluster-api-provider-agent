@@ -1,0 +1,7 @@
+apiVersion: capi-provider.agent-install.openshift.io/v1alpha1
+kind: AgentMachine
+metadata:
+  name: agentmachine-sample
+spec:
+  # Add fields here
+  foo: bar

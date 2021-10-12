@@ -1,0 +1,19 @@
+domain: agent-install.openshift.io
+layout:
+- go.kubebuilder.io/v3
+plugins:
+  manifests.sdk.operatorframework.io/v2: {}
+  scorecard.sdk.operatorframework.io/v2: {}
+projectName: cluster-api-provider-agent
+repo: github.com/eranco74/cluster-api-provider-agent
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: agent-install.openshift.io
+  group: capi-provider
+  kind: AgentMachine
+  path: github.com/eranco74/cluster-api-provider-agent/api/v1alpha1
+  version: v1alpha1
+version: "3"

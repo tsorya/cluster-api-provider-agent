@@ -1,0 +1,24 @@
+# permissions for end users to edit agentmachines.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: agentmachine-editor-role
+rules:
+- apiGroups:
+  - capi-provider.agent-install.openshift.io
+  resources:
+  - agentmachines
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - capi-provider.agent-install.openshift.io
+  resources:
+  - agentmachines/status
+  verbs:
+  - get
