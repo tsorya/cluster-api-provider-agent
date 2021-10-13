@@ -1,0 +1,34 @@
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  name: manager-role
+rules:
+- apiGroups:
+  - capi-provider.agent-install.openshift.io
+  resources:
+  - agentmachines
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - capi-provider.agent-install.openshift.io
+  resources:
+  - agentmachines/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - capi-provider.agent-install.openshift.io
+  resources:
+  - agentmachines/status
+  verbs:
+  - get
+  - patch
+  - update
