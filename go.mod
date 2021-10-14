@@ -10,12 +10,23 @@ replace sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.0.0
 // github.com/go-logr/logr on v0.4.x
 // k8s.io/klog/v2 on v2.10.x
 require (
+	github.com/go-openapi/swag v0.19.14
 	github.com/onsi/ginkgo v1.16.4
 	github.com/onsi/gomega v1.16.0
+	github.com/openshift/assisted-service v1.0.10-0.20211014050133-0ba6d8eea8bf
 	github.com/openshift/hive/apis v0.0.0-20211012200111-a691d6f21d9e
+	github.com/sirupsen/logrus v1.8.1
 	k8s.io/api v0.22.2
 	k8s.io/apimachinery v0.22.2
-	k8s.io/client-go v0.22.2
+	k8s.io/client-go v12.0.0+incompatible
 	sigs.k8s.io/cluster-api v1.0.0
 	sigs.k8s.io/controller-runtime v0.10.2
+)
+
+replace (
+	github.com/metal3-io/baremetal-operator => github.com/openshift/baremetal-operator v0.0.0-20210409032903-31b989a197eb // Use OpenShift fork
+	k8s.io/api => k8s.io/api v0.22.2
+	k8s.io/client-go => k8s.io/client-go v0.22.2
+	sigs.k8s.io/cluster-api-provider-aws => github.com/openshift/cluster-api-provider-aws v0.2.1-0.20201022175424-d30c7a274820
+	sigs.k8s.io/cluster-api-provider-azure => github.com/openshift/cluster-api-provider-azure v0.1.0-alpha.3.0.20201016155852-4090a6970205
 )

@@ -9,6 +9,32 @@ rules:
 - apiGroups:
   - capi-provider.agent-install.openshift.io
   resources:
+  - agentclusters
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - capi-provider.agent-install.openshift.io
+  resources:
+  - agentclusters/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - capi-provider.agent-install.openshift.io
+  resources:
+  - agentclusters/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - capi-provider.agent-install.openshift.io
+  resources:
   - agentmachines
   verbs:
   - create

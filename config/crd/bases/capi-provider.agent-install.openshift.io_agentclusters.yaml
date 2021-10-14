@@ -73,6 +73,18 @@ spec:
           status:
             description: AgentClusterStatus defines the observed state of AgentCluster
             properties:
+              clusterDeploymentReference:
+                description: Reference to the associated Hive ClusterDeployment
+                properties:
+                  name:
+                    description: Name is unique within a namespace to reference a
+                      clusterDeployment resource.
+                    type: string
+                  namespace:
+                    description: Namespace defines the space within which the clusterDeployment
+                      name must be unique.
+                    type: string
+                type: object
               conditions:
                 description: Conditions defines current service state of the ClusterDeployment.
                 items:
@@ -139,6 +151,8 @@ spec:
                 type: object
               ready:
                 type: boolean
+            required:
+            - clusterDeploymentReference
             type: object
         type: object
     served: true

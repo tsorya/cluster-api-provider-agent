@@ -23,6 +23,15 @@ import (
 	clusterv1alpha4 "sigs.k8s.io/cluster-api/api/v1alpha4"
 )
 
+type ClusterDeploymentReference struct {
+	// Name is unique within a namespace to reference a clusterDeployment resource.
+	// +optional
+	Name string `json:"name,omitempty"`
+	// Namespace defines the space within which the clusterDeployment name must be unique.
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+}
+
 // AgentClusterSpec defines the desired state of AgentCluster
 type AgentClusterSpec struct {
 	// ImageSetRef is a reference to a ClusterImageSet. If a value is specified for ReleaseImage,
@@ -47,6 +56,9 @@ type AgentClusterSpec struct {
 type AgentClusterStatus struct {
 	// +optional
 	Ready bool `json:"ready"`
+
+	// Reference to the associated Hive ClusterDeployment
+	ClusterDeploymentRef ClusterDeploymentReference `json:"clusterDeploymentReference"`
 
 	// Conditions defines current service state of the ClusterDeployment.
 	// +optional

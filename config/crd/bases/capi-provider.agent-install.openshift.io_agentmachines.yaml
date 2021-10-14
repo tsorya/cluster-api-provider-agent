@@ -116,6 +116,18 @@ spec:
                   - type
                   type: object
                 type: array
+              agentRef:
+                description: The Agent matched to the Machine
+                properties:
+                  name:
+                    description: Name is unique within a namespace to reference an
+                      agent resource.
+                    type: string
+                  namespace:
+                    description: Namespace defines the space within which the agent
+                      name must be unique.
+                    type: string
+                type: object
               conditions:
                 description: Conditions defines current service state of the AgentMachine.
                 items:
