@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/go-openapi/swag"
@@ -27,11 +28,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
-	"sigs.k8s.io/cluster-api/errors"
+	clustererrors "sigs.k8s.io/cluster-api/errors"
 	clusterutil "sigs.k8s.io/cluster-api/util"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	capiproviderv1alpha1 "github.com/eranco74/cluster-api-provider-agent/api/v1alpha1"
 )
@@ -77,6 +77,20 @@ func (r *AgentMachineReconciler) Reconcile(originalCtx context.Context, req ctrl
 		return r.findAgent(ctx, log, agentMachine)
 	}
 
+	agent := &aiv1beta1.Agent{}
+	agentRef := types.NamespacedName{Name: agentMachine.Status.AgentRef.Name, Namespace: agentMachine.Status.AgentRef.Namespace}
+	if err := r.Get(ctx, agentRef, agent); err != nil {
+		log.WithError(err).Errorf("Failed to get agent %s", agentRef)
+		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
+	}
+
+	// If the AgentMachine has an Agent but the Agent doesn't reference the ClusterDeployment,
+	// then set it. At this point we might find that the Agent is already bound and we'll need
+	// to find a new one.
+	if agent.Spec.ClusterDeploymentName == nil {
+		r.setAgentClusterInstallRef(ctx, log, agentMachine, agent)
+	}
+
 	// If the AgentMachine has an agent, check its conditions and update ready/error
 	return r.updateAgentStatus(ctx, log, agentMachine)
 }
@@ -87,24 +101,26 @@ func (r *AgentMachineReconciler) findAgent(ctx context.Context, log logrus.Field
 		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
 	}
 
-	var foundAgent aiv1beta1.Agent
+	agentMachines := &capiproviderv1alpha1.AgentMachineList{}
+	if err := r.List(ctx, agentMachines); err != nil {
+		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
+	}
+	var foundAgent *aiv1beta1.Agent
 
-	for _, agent := range agents.Items {
-	OUTER:
-		// Take the first unbound and validated agent that we find for now
-		for _, condition := range agent.Status.Conditions {
-			if condition.Type == aiv1beta1.BoundCondition && condition.Status != "False" {
-				continue OUTER
-			}
-			if condition.Type == aiv1beta1.ValidatedCondition && condition.Status != "True" {
-				continue OUTER
-			}
+	// Find an agent that is unbound and whose validations pass
+	for i := 0; i < len(agents.Items) && foundAgent == nil; i++ {
+		if isValidAgent(&agents.Items[i], agentMachines) {
+			foundAgent = &agents.Items[i]
 		}
-		foundAgent = agent
-		break
+	}
+
+	if foundAgent == nil {
+		log.Info("Did not find any available Agents")
+		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, errors.New("did not find any available Agents")
 	}
 
 	log.Infof("Found agent to associate with AgentMachine: %s/%s", foundAgent.Namespace, foundAgent.Name)
+
 	agentMachine.Status.AgentRef.Name = foundAgent.Name
 	agentMachine.Status.AgentRef.Namespace = foundAgent.Namespace
 	agentMachine.Spec.ProviderID = swag.String("agent://" + foundAgent.Status.Inventory.SystemVendor.SerialNumber)
@@ -122,38 +138,79 @@ func (r *AgentMachineReconciler) findAgent(ctx context.Context, log logrus.Field
 		}
 	}
 	agentMachine.Status.Addresses = machineAddresses
+	agentMachine.Status.Ready = false
 
-	// We need to set the ClusterRef on the Agent, so we need to get the CAPI Machine,
-	// which points to the Cluster, which points to the ClusterDeployment
+	if err := r.Status().Update(ctx, agentMachine); err != nil {
+		log.WithError(err).Error("failed to update AgentMachine Status")
+		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, nil
+	}
+
+	// Make a best-effort try to update the Agent->ClusterDeployment ref, if it doesn't work we'll try in the next reconcile
+	return r.setAgentClusterInstallRef(ctx, log, agentMachine, foundAgent)
+}
+
+func isValidAgent(agent *aiv1beta1.Agent, agentMachines *capiproviderv1alpha1.AgentMachineList) bool {
+	for _, condition := range agent.Status.Conditions {
+		if condition.Type == aiv1beta1.BoundCondition && condition.Status != "False" {
+			return false
+		}
+		if condition.Type == aiv1beta1.ValidatedCondition && condition.Status != "True" {
+			return false
+		}
+	}
+
+	// Make sure no other AgentMachine took this Agent already
+	for _, agentMachinePtr := range agentMachines.Items {
+		if agentMachinePtr.Status.AgentRef.Namespace == agent.Namespace && agentMachinePtr.Status.AgentRef.Name == agent.Name {
+			return false
+		}
+	}
+	return true
+}
+
+func (r *AgentMachineReconciler) setAgentClusterInstallRef(ctx context.Context, log logrus.FieldLogger, agentMachine *capiproviderv1alpha1.AgentMachine, agent *aiv1beta1.Agent) (ctrl.Result, error) {
+	clusterDeploymentRef, err := r.getClusterDeploymentFromAgentMachine(ctx, log, agentMachine)
+	if err != nil {
+		log.WithError(err).Error("Failed to find ClusterDeploymentRef")
+		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
+	}
+
+	agent.Spec.ClusterDeploymentName.Name = clusterDeploymentRef.Name
+	agent.Spec.ClusterDeploymentName.Namespace = clusterDeploymentRef.Namespace
+
+	if agentUpdateErr := r.Update(ctx, agent); err != nil {
+		log.WithError(agentUpdateErr).Error("failed to update Agent with ClusterDeployment ref")
+		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
+	}
+
+	return ctrl.Result{Requeue: true}, nil
+}
+
+func (r *AgentMachineReconciler) getClusterDeploymentFromAgentMachine(ctx context.Context, log logrus.FieldLogger, agentMachine *capiproviderv1alpha1.AgentMachine) (*capiproviderv1alpha1.ClusterDeploymentReference, error) {
+	// AgentMachine -> CAPI Machine -> Cluster -> ClusterDeployment
 	machine, err := clusterutil.GetOwnerMachine(ctx, r.Client, agentMachine.ObjectMeta)
 	if err != nil {
-		return ctrl.Result{}, err
+		return nil, err
 	}
 	if machine == nil {
 		log.Info("Waiting for Machine Controller to set OwnerRef on AgentMachine")
-		return ctrl.Result{}, nil
+		return nil, nil
 	}
+
 	cluster, err := clusterutil.GetClusterFromMetadata(ctx, r.Client, machine.ObjectMeta)
 	if err != nil {
 		log.Info("Machine is missing cluster label or cluster does not exist")
-		return reconcile.Result{}, nil
-	}
-	agentClusterRef := cluster.Spec.InfrastructureRef
-	// TODO: Get AgentCluster and ref to ClusterDeployment, set ClusterRef on Agent to it
-	log.Infof("AgentClusterRef: %s", agentClusterRef.UID)
-
-	if agentUpdateErr := r.Update(ctx, &foundAgent); err != nil {
-		log.WithError(agentUpdateErr).Error("failed to update Agent")
-		return ctrl.Result{Requeue: true}, nil
+		return nil, nil
 	}
 
-	// If we fail to update the AgentMachine, but already updated the Agent, we're inconsistent
-	if updateErr := r.Status().Update(ctx, agentMachine); updateErr != nil {
-		log.WithError(updateErr).Error("failed to update AgentMachine Status")
-		return ctrl.Result{Requeue: true}, nil
+	agentClusterRef := types.NamespacedName{Name: cluster.Spec.InfrastructureRef.Name, Namespace: cluster.Spec.InfrastructureRef.Namespace}
+	agentCluster := &capiproviderv1alpha1.AgentCluster{}
+	if err := r.Get(ctx, agentClusterRef, agentMachine); err != nil {
+		log.WithError(err).Errorf("Failed to get agentCluster %s", agentClusterRef)
+		return nil, err
 	}
 
-	return ctrl.Result{}, nil
+	return &agentCluster.Status.ClusterDeploymentRef, nil
 }
 
 func (r *AgentMachineReconciler) updateAgentStatus(ctx context.Context, log logrus.FieldLogger, agentMachine *capiproviderv1alpha1.AgentMachine) (ctrl.Result, error) {
@@ -168,7 +225,7 @@ func (r *AgentMachineReconciler) updateAgentStatus(ctx context.Context, log logr
 				agentMachine.Status.Ready = true
 			} else if condition.Status == "False" {
 				if condition.Reason == aiv1beta1.InstallationFailedReason {
-					agentMachine.Status.FailureReason = (*errors.MachineStatusError)(&condition.Reason)
+					agentMachine.Status.FailureReason = (*clustererrors.MachineStatusError)(&condition.Reason)
 					agentMachine.Status.FailureMessage = &condition.Message
 				}
 			}

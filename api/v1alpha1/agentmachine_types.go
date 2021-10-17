@@ -22,15 +22,6 @@ import (
 	"sigs.k8s.io/cluster-api/errors"
 )
 
-type AgentReference struct {
-	// Name is unique within a namespace to reference an agent resource.
-	// +optional
-	Name string `json:"name,omitempty"`
-	// Namespace defines the space within which the agent name must be unique.
-	// +optional
-	Namespace string `json:"namespace,omitempty"`
-}
-
 // AgentMachineSpec defines the desired state of AgentMachine
 type AgentMachineSpec struct {
 	// The minimum number of CPU cores that this Machine requires
