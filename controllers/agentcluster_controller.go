@@ -70,10 +70,10 @@ func (r *AgentClusterReconciler) Reconcile(originalCtx context.Context, req ctrl
 		return r.createClusterDeployment(ctx, log, agentCluster)
 	}
 	clusterDeployment := &hivev1.ClusterDeployment{}
-	err := r.Get(ctx, types.NamespacedName{Namespace: agentCluster.Status.ClusterDeploymentRef.Namespace, Name: agentCluster.Name}, clusterDeployment)
+	err := r.Get(ctx, types.NamespacedName{Namespace: agentCluster.Status.ClusterDeploymentRef.Namespace, Name: agentCluster.Status.ClusterDeploymentRef.Name}, clusterDeployment)
 	if err != nil {
 		log.WithError(err).Error("Failed to get ClusterDeployment")
-		return ctrl.Result{Requeue: true}, nil
+		return ctrl.Result{Requeue: true}, err
 	}
 	if clusterDeployment.Spec.ClusterInstallRef == nil {
 		return r.SetAgentClusterInstallRef(ctx, log, clusterDeployment, agentCluster.Spec.ImageSetRef)
@@ -100,6 +100,10 @@ func (r *AgentClusterReconciler) createClusterDeployment(ctx context.Context, lo
 		log.WithError(err).Error("Failed to create ClusterDeployment")
 		return ctrl.Result{Requeue: true}, nil
 	}
+	if err := r.Client.Status().Update(ctx, agentCluster); err != nil {
+		log.WithError(err).Error("Failed to update status")
+		return ctrl.Result{Requeue: true}, nil
+	}
 	return ctrl.Result{}, nil
 }
 
@@ -108,23 +112,14 @@ func (r *AgentClusterReconciler) SetAgentClusterInstallRef(ctx context.Context, 
 	agentClusterInstall := &hiveext.AgentClusterInstall{}
 	if err := r.Get(ctx, types.NamespacedName{Namespace: clusterDeployment.Namespace, Name: clusterDeployment.Name}, agentClusterInstall); err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Info("Creating AgentClusterInstall for %s %s", clusterDeployment.Namespace, clusterDeployment.Name)
-			agentClusterInstall = &hiveext.AgentClusterInstall{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      clusterDeployment.Name,
-					Namespace: clusterDeployment.Namespace,
-				},
-				Spec: hiveext.AgentClusterInstallSpec{
-					ImageSetRef: *imageSetRef,
-				},
+			err = r.createAgentClusterInstall(ctx, log, clusterDeployment, imageSetRef)
+			if err != nil {
+				log.WithError(err).Error("failed to create AgentClusterInstall")
+				return ctrl.Result{Requeue: true}, err
 			}
-			r.Create(ctx, agentClusterInstall)
-			log.WithError(err).Error("failed to create AgentClusterInstall")
-			return ctrl.Result{Requeue: true}, nil
-
 		} else {
 			log.WithError(err).Error("Failed to get AgentClusterInstall")
-			return ctrl.Result{Requeue: true}, nil
+			return ctrl.Result{Requeue: true}, err
 		}
 	}
 	clusterDeployment.Spec.ClusterInstallRef = &hivev1.ClusterInstallLocalReference{
@@ -136,6 +131,20 @@ func (r *AgentClusterReconciler) SetAgentClusterInstallRef(ctx context.Context, 
 	r.Update(ctx, clusterDeployment)
 	return ctrl.Result{}, nil
 
+}
+
+func (r *AgentClusterReconciler) createAgentClusterInstall(ctx context.Context, log logrus.FieldLogger, clusterDeployment *hivev1.ClusterDeployment, imageSetRef *hivev1.ClusterImageSetReference) error {
+	log.Infof("Creating AgentClusterInstall for clusterDeployment: %s %s", clusterDeployment.Namespace, clusterDeployment.Name)
+	agentClusterInstall := &hiveext.AgentClusterInstall{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      clusterDeployment.Name,
+			Namespace: clusterDeployment.Namespace,
+		},
+		Spec: hiveext.AgentClusterInstallSpec{
+			ImageSetRef: *imageSetRef,
+		},
+	}
+	return r.Client.Create(ctx, agentClusterInstall)
 }
 
 func (r *AgentClusterReconciler) updateClusterStatus(ctx context.Context, log logrus.FieldLogger, agentCluster *capiproviderv1alpha1.AgentCluster) (ctrl.Result, error) {

@@ -2,11 +2,15 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	capiproviderv1alpha1 "github.com/eranco74/cluster-api-provider-agent/api/v1alpha1"
 	"github.com/golang/mock/gomock"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	hiveext "github.com/openshift/assisted-service/api/hiveextension/v1beta1"
+	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"github.com/sirupsen/logrus"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -14,6 +18,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	fakeclient "sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
+
+func init() {
+	_ = hivev1.AddToScheme(scheme.Scheme)
+	_ = hiveext.AddToScheme(scheme.Scheme)
+	_ = capiproviderv1alpha1.AddToScheme(scheme.Scheme)
+}
 
 // move to common
 func GetTestLog() logrus.FieldLogger {
@@ -83,32 +93,89 @@ var _ = Describe("agentcluster reconcile", func() {
 		Expect(err).To(BeNil())
 		Expect(result).To(Equal(ctrl.Result{}))
 	})
+	It("create clusterDeployment for agentCluster", func() {
+		domain := "test-domain.com"
+		clusterName := "test-cluster-name"
+		pullSecretName := "test-pull-secret-name"
+		agentCluster := newAgentCluster("agentCluster-1", testNamespace, capiproviderv1alpha1.AgentClusterSpec{
+			BaseDomain:  domain,
+			ClusterName: clusterName,
+			PullSecretRef: &corev1.LocalObjectReference{
+				Name: pullSecretName,
+			},
+		})
+		Expect(c.Create(ctx, agentCluster)).To(BeNil())
 
-	// currently fail due to: "no kind is registered for the type v1.ClusterDeployment in scheme"
-	//It("create clusterDeployment for agentCluster", func() {
-	//	domain := "test-domain.com"
-	//	clusterName := "test-cluster-name"
-	//	pullSecretName := "test-pull-secret-name"
-	//	agentCluster := newAgentCluster("agentCluster-1", testNamespace, capiproviderv1alpha1.AgentClusterSpec{
-	//		BaseDomain:  domain,
-	//		ClusterName: clusterName,
-	//		PullSecretRef: &corev1.LocalObjectReference{
-	//			Name: pullSecretName,
-	//		},
-	//	})
-	//	Expect(c.Create(ctx, agentCluster)).To(BeNil())
-	//
-	//	result, err := acr.Reconcile(ctx, newAgentClusterRequest(agentCluster))
-	//	Expect(err).To(BeNil())
-	//	Expect(result).To(Equal(ctrl.Result{}))
-	//
-	//	key := types.NamespacedName{
-	//		Namespace: testNamespace,
-	//		Name:      "agentCluster-1",
-	//	}
-	//	logrus.Infof("%v", hivev1.ClusterDeployment{})
-	//	Expect(c.Get(ctx, key, agentCluster)).To(BeNil())
-	//	Expect(agentCluster.Status.ClusterDeploymentRef.Name).ToNot(Equal(""))
-	//})
+		result, err := acr.Reconcile(ctx, newAgentClusterRequest(agentCluster))
+		Expect(err).To(BeNil())
+		Expect(result).To(Equal(ctrl.Result{}))
 
+		key := types.NamespacedName{
+			Namespace: testNamespace,
+			Name:      "agentCluster-1",
+		}
+		Expect(c.Get(ctx, key, agentCluster)).To(BeNil())
+		fmt.Printf("%+v", agentCluster)
+		Expect(agentCluster.Status.ClusterDeploymentRef.Name).ToNot(Equal(""))
+	})
+	It("failed to find clusterDeployment", func() {
+		domain := "test-domain.com"
+		clusterName := "test-cluster-name"
+		pullSecretName := "test-pull-secret-name"
+		agentCluster := newAgentCluster("agentCluster-1", testNamespace, capiproviderv1alpha1.AgentClusterSpec{
+			BaseDomain:  domain,
+			ClusterName: clusterName,
+			PullSecretRef: &corev1.LocalObjectReference{
+				Name: pullSecretName,
+			},
+		})
+		agentCluster.Status.ClusterDeploymentRef.Name = "missing-cluster-deployment-name"
+		Expect(c.Create(ctx, agentCluster)).To(BeNil())
+
+		result, err := acr.Reconcile(ctx, newAgentClusterRequest(agentCluster))
+		Expect(err).ToNot(BeNil())
+		Expect(err.Error()).To(MatchRegexp("not found"))
+		Expect(result).To(Equal(ctrl.Result{Requeue: true}))
+	})
+	It("create AgentClusterInstall for agentCluster", func() {
+		domain := "test-domain.com"
+		clusterName := "test-cluster-name"
+		pullSecretName := "test-pull-secret-name"
+		agentCluster := newAgentCluster("agentCluster-1", testNamespace, capiproviderv1alpha1.AgentClusterSpec{
+			BaseDomain:  domain,
+			ClusterName: clusterName,
+			PullSecretRef: &corev1.LocalObjectReference{
+				Name: pullSecretName,
+			},
+			ImageSetRef: &hivev1.ClusterImageSetReference{Name: "test-image-set"},
+		})
+		agentCluster.Status.ClusterDeploymentRef.Name = agentCluster.Name
+		agentCluster.Status.ClusterDeploymentRef.Namespace = agentCluster.Namespace
+		Expect(c.Create(ctx, agentCluster)).To(BeNil())
+
+		clusterDeployment := &hivev1.ClusterDeployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      agentCluster.Name,
+				Namespace: agentCluster.Namespace,
+			},
+			Spec: hivev1.ClusterDeploymentSpec{
+				Installed:     true,
+				BaseDomain:    agentCluster.Spec.BaseDomain,
+				ClusterName:   agentCluster.Spec.ClusterName,
+				PullSecretRef: agentCluster.Spec.PullSecretRef},
+		}
+		Expect(c.Create(ctx, clusterDeployment)).To(BeNil())
+
+		result, err := acr.Reconcile(ctx, newAgentClusterRequest(agentCluster))
+		Expect(err).To(BeNil())
+		Expect(result).To(Equal(ctrl.Result{}))
+
+		key := types.NamespacedName{
+			Namespace: testNamespace,
+			Name:      "agentCluster-1",
+		}
+		Expect(c.Get(ctx, key, agentCluster)).To(BeNil())
+		fmt.Printf("%+v", agentCluster)
+		Expect(agentCluster.Status.ClusterDeploymentRef.Name).ToNot(Equal(""))
+	})
 })
