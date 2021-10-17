@@ -11,6 +11,7 @@ replace sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.0.0
 // k8s.io/klog/v2 on v2.10.x
 require (
 	github.com/go-openapi/swag v0.19.14
+	github.com/golang/mock v1.6.0
 	github.com/onsi/ginkgo v1.16.4
 	github.com/onsi/gomega v1.16.0
 	github.com/openshift/assisted-service v1.0.10-0.20211014050133-0ba6d8eea8bf
