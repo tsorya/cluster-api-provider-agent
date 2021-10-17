@@ -83,7 +83,7 @@ func (r *AgentClusterReconciler) Reconcile(originalCtx context.Context, req ctrl
 }
 
 func (r *AgentClusterReconciler) createClusterDeployment(ctx context.Context, log logrus.FieldLogger, agentCluster *capiproviderv1alpha1.AgentCluster) (ctrl.Result, error) {
-	log.Info("Creating clusterDeployment for %s %s", agentCluster.Namespace, agentCluster.Name)
+	log.Info("Creating clusterDeployment")
 	clusterDeployment := &hivev1.ClusterDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      agentCluster.Name,
@@ -104,7 +104,7 @@ func (r *AgentClusterReconciler) createClusterDeployment(ctx context.Context, lo
 }
 
 func (r *AgentClusterReconciler) SetAgentClusterInstallRef(ctx context.Context, log logrus.FieldLogger, clusterDeployment *hivev1.ClusterDeployment, imageSetRef *hivev1.ClusterImageSetReference) (ctrl.Result, error) {
-	log.Infof("Setting AgentClusterInstall for %s %s", clusterDeployment.Namespace, clusterDeployment.Name)
+	log.Info("Setting AgentClusterInstall")
 	agentClusterInstall := &hiveext.AgentClusterInstall{}
 	if err := r.Get(ctx, types.NamespacedName{Namespace: clusterDeployment.Namespace, Name: clusterDeployment.Name}, agentClusterInstall); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -139,7 +139,7 @@ func (r *AgentClusterReconciler) SetAgentClusterInstallRef(ctx context.Context, 
 }
 
 func (r *AgentClusterReconciler) updateClusterStatus(ctx context.Context, log logrus.FieldLogger, agentCluster *capiproviderv1alpha1.AgentCluster) (ctrl.Result, error) {
-	log.Infof("Updating agentCluster %s %s status according to %s", agentCluster.Namespace, agentCluster.Name, agentCluster.Status.ClusterDeploymentRef.Name)
+	log.Infof("Updating agentCluster status according to %s", agentCluster.Status.ClusterDeploymentRef.Name)
 	// Once the cluster have clusterDeploymentRef and ClusterInstallRef we should set the status to Ready
 	agentCluster.Status.Ready = true
 	if err := r.Status().Update(ctx, agentCluster); err != nil {
