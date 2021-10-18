@@ -25,12 +25,6 @@ func init() {
 	_ = capiproviderv1alpha1.AddToScheme(scheme.Scheme)
 }
 
-// move to common
-func GetTestLog() logrus.FieldLogger {
-	l := logrus.New()
-	return l
-}
-
 func newAgentClusterRequest(agentCluster *capiproviderv1alpha1.AgentCluster) ctrl.Request {
 	namespacedName := types.NamespacedName{
 		Namespace: agentCluster.ObjectMeta.Namespace,
@@ -65,7 +59,7 @@ var _ = Describe("agentcluster reconcile", func() {
 		acr = &AgentClusterReconciler{
 			Client: c,
 			Scheme: scheme.Scheme,
-			Log:    GetTestLog(),
+			Log:    logrus.New(),
 		}
 	})
 
@@ -77,9 +71,9 @@ var _ = Describe("agentcluster reconcile", func() {
 		agentCluster := newAgentCluster("agentCluster-1", testNamespace, capiproviderv1alpha1.AgentClusterSpec{})
 		Expect(c.Create(ctx, agentCluster)).To(BeNil())
 
-		noneExistingHost := newAgentCluster("agentCluster-2", testNamespace, capiproviderv1alpha1.AgentClusterSpec{})
+		noneExistingAgentCluster := newAgentCluster("agentCluster-2", testNamespace, capiproviderv1alpha1.AgentClusterSpec{})
 
-		result, err := acr.Reconcile(ctx, newAgentClusterRequest(noneExistingHost))
+		result, err := acr.Reconcile(ctx, newAgentClusterRequest(noneExistingAgentCluster))
 		Expect(err).To(BeNil())
 		Expect(result).To(Equal(ctrl.Result{}))
 	})
