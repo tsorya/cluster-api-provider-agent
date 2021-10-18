@@ -3,6 +3,9 @@
 # It should be run by config/default
 resources:
 - bases/capi-provider.agent-install.openshift.io_agentmachines.yaml
+- bases/capi-provider.agent-install.openshift.io_agentmachinetemplates.yaml
+- bases/capi-provider.agent-install.openshift.io_agentclusters.yaml
+
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patchesStrategicMerge:
