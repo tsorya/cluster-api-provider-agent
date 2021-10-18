@@ -18,7 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1alpha4 "sigs.k8s.io/cluster-api/api/v1alpha4"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/errors"
 )
 
@@ -51,7 +51,7 @@ type AgentMachineStatus struct {
 	AgentRef *AgentReference `json:"agentRef,omitempty"`
 
 	// Addresses contains the Agent's associated addresses.
-	Addresses []clusterv1alpha4.MachineAddress `json:"addresses,omitempty"`
+	Addresses []clusterv1.MachineAddress `json:"addresses,omitempty"`
 
 	// FailureReason will be set in the event that there is a terminal problem
 	// reconciling the Machine and will contain a succinct value suitable
@@ -93,7 +93,7 @@ type AgentMachineStatus struct {
 
 	// Conditions defines current service state of the AgentMachine.
 	// +optional
-	Conditions clusterv1alpha4.Conditions `json:"conditions,omitempty"`
+	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
 }
 
 //+kubebuilder:object:root=true

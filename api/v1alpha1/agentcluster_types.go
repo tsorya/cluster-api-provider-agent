@@ -20,7 +20,7 @@ import (
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1alpha4 "sigs.k8s.io/cluster-api/api/v1alpha4"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
 type ClusterDeploymentReference struct {
@@ -62,10 +62,10 @@ type AgentClusterStatus struct {
 
 	// Conditions defines current service state of the ClusterDeployment.
 	// +optional
-	Conditions clusterv1alpha4.Conditions `json:"conditions,omitempty"`
+	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
 
 	// FailureDomains is a list of failure domain objects synced from the infrastructure provider.
-	FailureDomains clusterv1alpha4.FailureDomains `json:"failureDomains,omitempty"`
+	FailureDomains clusterv1.FailureDomains `json:"failureDomains,omitempty"`
 }
 
 //+kubebuilder:object:root=true

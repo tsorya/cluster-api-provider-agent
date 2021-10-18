@@ -27,7 +27,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	clustererrors "sigs.k8s.io/cluster-api/errors"
 	clusterutil "sigs.k8s.io/cluster-api/util"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -88,7 +88,7 @@ func (r *AgentMachineReconciler) Reconcile(originalCtx context.Context, req ctrl
 	// then set it. At this point we might find that the Agent is already bound and we'll need
 	// to find a new one.
 	if agent.Spec.ClusterDeploymentName == nil {
-		r.setAgentClusterInstallRef(ctx, log, agentMachine, agent)
+		return r.setAgentClusterInstallRef(ctx, log, agentMachine, agent)
 	}
 
 	// If the AgentMachine has an agent, check its conditions and update ready/error
@@ -121,8 +121,7 @@ func (r *AgentMachineReconciler) findAgent(ctx context.Context, log logrus.Field
 
 	log.Infof("Found agent to associate with AgentMachine: %s/%s", foundAgent.Namespace, foundAgent.Name)
 
-	agentMachine.Status.AgentRef.Name = foundAgent.Name
-	agentMachine.Status.AgentRef.Namespace = foundAgent.Namespace
+	agentMachine.Status.AgentRef = &capiproviderv1alpha1.AgentReference{Namespace: foundAgent.Namespace, Name: foundAgent.Name}
 	agentMachine.Spec.ProviderID = swag.String("agent://" + foundAgent.Status.Inventory.SystemVendor.SerialNumber)
 
 	var machineAddresses []clusterv1.MachineAddress
@@ -161,7 +160,7 @@ func isValidAgent(agent *aiv1beta1.Agent, agentMachines *capiproviderv1alpha1.Ag
 
 	// Make sure no other AgentMachine took this Agent already
 	for _, agentMachinePtr := range agentMachines.Items {
-		if agentMachinePtr.Status.AgentRef.Namespace == agent.Namespace && agentMachinePtr.Status.AgentRef.Name == agent.Name {
+		if agentMachinePtr.Status.AgentRef != nil && agentMachinePtr.Status.AgentRef.Namespace == agent.Namespace && agentMachinePtr.Status.AgentRef.Name == agent.Name {
 			return false
 		}
 	}
@@ -174,9 +173,11 @@ func (r *AgentMachineReconciler) setAgentClusterInstallRef(ctx context.Context, 
 		log.WithError(err).Error("Failed to find ClusterDeploymentRef")
 		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
 	}
+	if clusterDeploymentRef == nil {
+		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, nil
+	}
 
-	agent.Spec.ClusterDeploymentName.Name = clusterDeploymentRef.Name
-	agent.Spec.ClusterDeploymentName.Namespace = clusterDeploymentRef.Namespace
+	agent.Spec.ClusterDeploymentName = &aiv1beta1.ClusterReference{Namespace: clusterDeploymentRef.Namespace, Name: clusterDeploymentRef.Name}
 
 	if agentUpdateErr := r.Update(ctx, agent); err != nil {
 		log.WithError(agentUpdateErr).Error("failed to update Agent with ClusterDeployment ref")
@@ -205,7 +206,7 @@ func (r *AgentMachineReconciler) getClusterDeploymentFromAgentMachine(ctx contex
 
 	agentClusterRef := types.NamespacedName{Name: cluster.Spec.InfrastructureRef.Name, Namespace: cluster.Spec.InfrastructureRef.Namespace}
 	agentCluster := &capiproviderv1alpha1.AgentCluster{}
-	if err := r.Get(ctx, agentClusterRef, agentMachine); err != nil {
+	if err := r.Get(ctx, agentClusterRef, agentCluster); err != nil {
 		log.WithError(err).Errorf("Failed to get agentCluster %s", agentClusterRef)
 		return nil, err
 	}
