@@ -17,7 +17,6 @@ limitations under the License.
 package v1alpha1
 
 import (
-	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
@@ -34,9 +33,8 @@ type ClusterDeploymentReference struct {
 
 // AgentClusterSpec defines the desired state of AgentCluster
 type AgentClusterSpec struct {
-	// ImageSetRef is a reference to a ClusterImageSet. If a value is specified for ReleaseImage,
-	// that will take precedence over the one from the ClusterImageSet.
-	ImageSetRef *hivev1.ClusterImageSetReference `json:"imageSetRef,omitempty"`
+	// ReleaseImage is the image used when installing the cluster
+	ReleaseImage string `json:"releaseImage"`
 
 	// ClusterName is the friendly name of the cluster. It is used for subdomains,
 	// some resource tagging, and other instances where a friendly name for the
@@ -57,7 +55,7 @@ type AgentClusterStatus struct {
 	// +optional
 	Ready bool `json:"ready"`
 
-	// Reference to the associated Hive ClusterDeployment
+	// ClusterDeploymentRef is a reference to the associated Hive ClusterDeployment.
 	ClusterDeploymentRef ClusterDeploymentReference `json:"clusterDeploymentReference"`
 
 	// Conditions defines current service state of the ClusterDeployment.

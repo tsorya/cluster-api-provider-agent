@@ -45,18 +45,6 @@ spec:
                   used for subdomains, some resource tagging, and other instances
                   where a friendly name for the cluster is useful.
                 type: string
-              imageSetRef:
-                description: ImageSetRef is a reference to a ClusterImageSet. If a
-                  value is specified for ReleaseImage, that will take precedence over
-                  the one from the ClusterImageSet.
-                properties:
-                  name:
-                    description: Name is the name of the ClusterImageSet that this
-                      refers to
-                    type: string
-                required:
-                - name
-                type: object
               pullSecretRef:
                 description: PullSecretRef is the reference to the secret to use when
                   pulling images.
@@ -66,15 +54,19 @@ spec:
                       TODO: Add other useful fields. apiVersion, kind, uid?'
                     type: string
                 type: object
+              releaseImage:
+                description: releaseImage is the image used when installing the cluster
+                type: string
             required:
             - baseDomain
             - clusterName
+            - releaseImage
             type: object
           status:
             description: AgentClusterStatus defines the observed state of AgentCluster
             properties:
               clusterDeploymentReference:
-                description: Reference to the associated Hive ClusterDeployment
+                description: Reference to the associated Hive ClusterDeployment.
                 properties:
                   name:
                     description: Name is unique within a namespace to reference a

@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"context"
-	"fmt"
 	capiproviderv1alpha1 "github.com/eranco74/cluster-api-provider-agent/api/v1alpha1"
 	"github.com/golang/mock/gomock"
 	. "github.com/onsi/ginkgo"
@@ -97,6 +96,7 @@ var _ = Describe("agentcluster reconcile", func() {
 			PullSecretRef: &corev1.LocalObjectReference{
 				Name: pullSecretName,
 			},
+			ReleaseImage: "release-image",
 		})
 		Expect(c.Create(ctx, agentCluster)).To(BeNil())
 
@@ -109,7 +109,6 @@ var _ = Describe("agentcluster reconcile", func() {
 			Name:      "agentCluster-1",
 		}
 		Expect(c.Get(ctx, key, agentCluster)).To(BeNil())
-		fmt.Printf("%+v", agentCluster)
 		Expect(agentCluster.Status.ClusterDeploymentRef.Name).ToNot(Equal(""))
 	})
 	It("failed to find clusterDeployment", func() {
@@ -122,6 +121,7 @@ var _ = Describe("agentcluster reconcile", func() {
 			PullSecretRef: &corev1.LocalObjectReference{
 				Name: pullSecretName,
 			},
+			ReleaseImage: "release-image",
 		})
 		agentCluster.Status.ClusterDeploymentRef.Name = "missing-cluster-deployment-name"
 		Expect(c.Create(ctx, agentCluster)).To(BeNil())
@@ -141,35 +141,216 @@ var _ = Describe("agentcluster reconcile", func() {
 			PullSecretRef: &corev1.LocalObjectReference{
 				Name: pullSecretName,
 			},
-			ImageSetRef: &hivev1.ClusterImageSetReference{Name: "test-image-set"},
+			ReleaseImage: "release-image",
 		})
 		agentCluster.Status.ClusterDeploymentRef.Name = agentCluster.Name
 		agentCluster.Status.ClusterDeploymentRef.Namespace = agentCluster.Namespace
 		Expect(c.Create(ctx, agentCluster)).To(BeNil())
 
-		clusterDeployment := &hivev1.ClusterDeployment{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      agentCluster.Name,
-				Namespace: agentCluster.Namespace,
-			},
-			Spec: hivev1.ClusterDeploymentSpec{
-				Installed:     true,
-				BaseDomain:    agentCluster.Spec.BaseDomain,
-				ClusterName:   agentCluster.Spec.ClusterName,
-				PullSecretRef: agentCluster.Spec.PullSecretRef},
-		}
-		Expect(c.Create(ctx, clusterDeployment)).To(BeNil())
+		createClusterDeployment(c, ctx, agentCluster, nil)
 
 		result, err := acr.Reconcile(ctx, newAgentClusterRequest(agentCluster))
 		Expect(err).To(BeNil())
-		Expect(result).To(Equal(ctrl.Result{}))
+		Expect(result).To(Equal(ctrl.Result{Requeue: true}))
 
 		key := types.NamespacedName{
 			Namespace: testNamespace,
 			Name:      "agentCluster-1",
 		}
 		Expect(c.Get(ctx, key, agentCluster)).To(BeNil())
-		fmt.Printf("%+v", agentCluster)
-		Expect(agentCluster.Status.ClusterDeploymentRef.Name).ToNot(Equal(""))
+		Expect(agentCluster.Status.ClusterDeploymentRef.Name).To(Equal("agentCluster-1"))
+	})
+	It("Failed to find AgentClusterInstall for agentCluster", func() {
+		domain := "test-domain.com"
+		clusterName := "test-cluster-name"
+		pullSecretName := "test-pull-secret-name"
+		agentCluster := newAgentCluster("agentCluster-1", testNamespace, capiproviderv1alpha1.AgentClusterSpec{
+			BaseDomain:  domain,
+			ClusterName: clusterName,
+			PullSecretRef: &corev1.LocalObjectReference{
+				Name: pullSecretName,
+			},
+			ReleaseImage: "release-image",
+		})
+
+		agentCluster.Status.ClusterDeploymentRef.Name = agentCluster.Name
+		agentCluster.Status.ClusterDeploymentRef.Namespace = agentCluster.Namespace
+		Expect(c.Create(ctx, agentCluster)).To(BeNil())
+
+		createClusterDeployment(c, ctx, agentCluster, &hivev1.ClusterInstallLocalReference{
+			Kind:    "AgentClusterInstall",
+			Group:   hiveext.Group,
+			Version: hiveext.Version,
+			Name:    agentCluster.Name,
+		})
+
+		result, err := acr.Reconcile(ctx, newAgentClusterRequest(agentCluster))
+		Expect(err).NotTo(BeNil())
+		Expect(result).To(Equal(ctrl.Result{Requeue: true}))
+	})
+	It("create imageSet for agentCluster", func() {
+		domain := "test-domain.com"
+		clusterName := "test-cluster-name"
+		pullSecretName := "test-pull-secret-name"
+		agentCluster := newAgentCluster("agentCluster-1", testNamespace, capiproviderv1alpha1.AgentClusterSpec{
+			BaseDomain:  domain,
+			ClusterName: clusterName,
+			PullSecretRef: &corev1.LocalObjectReference{
+				Name: pullSecretName,
+			},
+			ReleaseImage: "release-image",
+		})
+
+		agentCluster.Status.ClusterDeploymentRef.Name = agentCluster.Name
+		agentCluster.Status.ClusterDeploymentRef.Namespace = agentCluster.Namespace
+		Expect(c.Create(ctx, agentCluster)).To(BeNil())
+
+		createAgentClusterInstall(c, ctx, agentCluster.Namespace, agentCluster.Name, &hivev1.ClusterImageSetReference{Name: ""})
+		createClusterDeployment(c, ctx, agentCluster, &hivev1.ClusterInstallLocalReference{
+			Kind:    "AgentClusterInstall",
+			Group:   hiveext.Group,
+			Version: hiveext.Version,
+			Name:    agentCluster.Name,
+		})
+
+		result, err := acr.Reconcile(ctx, newAgentClusterRequest(agentCluster))
+		Expect(err).To(BeNil())
+		Expect(result).To(Equal(ctrl.Result{}))
+		validateAllRefs(c, ctx, agentCluster.Name, testNamespace, agentCluster.Spec.ReleaseImage)
+	})
+	It("ImageSet exists but not referenced by AgentClusterInstall", func() {
+		domain := "test-domain.com"
+		clusterName := "test-cluster-name"
+		pullSecretName := "test-pull-secret-name"
+		agentCluster := newAgentCluster("agentCluster-1", testNamespace, capiproviderv1alpha1.AgentClusterSpec{
+			BaseDomain:  domain,
+			ClusterName: clusterName,
+			PullSecretRef: &corev1.LocalObjectReference{
+				Name: pullSecretName,
+			},
+			ReleaseImage: "right-release-image",
+		})
+
+		agentCluster.Status.ClusterDeploymentRef.Name = agentCluster.Name
+		agentCluster.Status.ClusterDeploymentRef.Namespace = agentCluster.Namespace
+		Expect(c.Create(ctx, agentCluster)).To(BeNil())
+
+		createAgentClusterInstall(c, ctx, agentCluster.Namespace, agentCluster.Name, &hivev1.ClusterImageSetReference{Name: ""})
+		createClusterImageSet(c, ctx, agentCluster.Name, "wrong-release-image")
+		createClusterDeployment(c, ctx, agentCluster, &hivev1.ClusterInstallLocalReference{
+			Kind:    "AgentClusterInstall",
+			Group:   hiveext.Group,
+			Version: hiveext.Version,
+			Name:    agentCluster.Name,
+		})
+
+		result, err := acr.Reconcile(ctx, newAgentClusterRequest(agentCluster))
+		Expect(err).NotTo(BeNil())
+		Expect(result).To(Equal(ctrl.Result{Requeue: true}))
+	})
+	It("update imageSet releaseImage", func() {
+		domain := "test-domain.com"
+		clusterName := "test-cluster-name"
+		pullSecretName := "test-pull-secret-name"
+		agentCluster := newAgentCluster("agentCluster-1", testNamespace, capiproviderv1alpha1.AgentClusterSpec{
+			BaseDomain:  domain,
+			ClusterName: clusterName,
+			PullSecretRef: &corev1.LocalObjectReference{
+				Name: pullSecretName,
+			},
+			ReleaseImage: "right-release-image",
+		})
+
+		agentCluster.Status.ClusterDeploymentRef.Name = agentCluster.Name
+		agentCluster.Status.ClusterDeploymentRef.Namespace = agentCluster.Namespace
+		Expect(c.Create(ctx, agentCluster)).To(BeNil())
+
+		createAgentClusterInstall(c, ctx, agentCluster.Namespace, agentCluster.Name, &hivev1.ClusterImageSetReference{Name: agentCluster.Name})
+		createClusterImageSet(c, ctx, agentCluster.Name, "wrong-release-image")
+		createClusterDeployment(c, ctx, agentCluster, &hivev1.ClusterInstallLocalReference{
+			Kind:    "AgentClusterInstall",
+			Group:   hiveext.Group,
+			Version: hiveext.Version,
+			Name:    agentCluster.Name,
+		})
+
+		result, err := acr.Reconcile(ctx, newAgentClusterRequest(agentCluster))
+		Expect(err).To(BeNil())
+		Expect(result).To(Equal(ctrl.Result{}))
+
+		validateAllRefs(c, ctx, agentCluster.Name, testNamespace, agentCluster.Spec.ReleaseImage)
 	})
 })
+
+func validateAllRefs(c client.Client, ctx context.Context, agentClusterName string, namespace string, releaseImage string) {
+	key := types.NamespacedName{
+		Namespace: namespace,
+		Name:      agentClusterName,
+	}
+	agentCluster := &capiproviderv1alpha1.AgentCluster{}
+	Expect(c.Get(ctx, key, agentCluster)).To(BeNil())
+	Expect(agentCluster.Status.ClusterDeploymentRef.Name).To(Equal(agentClusterName))
+
+	clusterDeployment := &hivev1.ClusterDeployment{}
+	Expect(c.Get(ctx, key, clusterDeployment)).To(BeNil())
+	Expect(agentCluster.Status.ClusterDeploymentRef.Name).To(Equal(agentClusterName))
+
+	agentClusterInstall := &hiveext.AgentClusterInstall{}
+	Expect(c.Get(ctx, key, agentClusterInstall)).To(BeNil())
+	Expect(agentClusterInstall.Spec.ImageSetRef.Name).To(Equal(agentClusterName))
+
+	clusterImageSet := &hivev1.ClusterImageSet{}
+	// clusterImageSet namespace should be empty
+	key = types.NamespacedName{
+		Namespace: "",
+		Name:      agentClusterName,
+	}
+	Expect(c.Get(ctx, key, clusterImageSet)).To(BeNil())
+	Expect(clusterImageSet.Spec.ReleaseImage).To(Equal(releaseImage))
+
+}
+
+func createClusterDeployment(c client.Client, ctx context.Context, agentCluster *capiproviderv1alpha1.AgentCluster, ClusterInstallRef *hivev1.ClusterInstallLocalReference) {
+	clusterDeployment := &hivev1.ClusterDeployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      agentCluster.Name,
+			Namespace: agentCluster.Namespace,
+		},
+		Spec: hivev1.ClusterDeploymentSpec{
+			Installed:         true,
+			BaseDomain:        agentCluster.Spec.BaseDomain,
+			ClusterName:       agentCluster.Spec.ClusterName,
+			PullSecretRef:     agentCluster.Spec.PullSecretRef,
+			ClusterInstallRef: ClusterInstallRef,
+		},
+	}
+	Expect(c.Create(ctx, clusterDeployment)).To(BeNil())
+}
+
+func createClusterImageSet(c client.Client, ctx context.Context, clusterImageSetName string, releaseImage string) {
+	clusterImageSet := &hivev1.ClusterImageSet{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ClusterImageSet",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      clusterImageSetName,
+			Namespace: "",
+		},
+		Spec: hivev1.ClusterImageSetSpec{ReleaseImage: releaseImage},
+	}
+	Expect(c.Create(ctx, clusterImageSet)).To(BeNil())
+}
+
+func createAgentClusterInstall(c client.Client, ctx context.Context, namespace string, name string, imageSetRef *hivev1.ClusterImageSetReference) {
+	agentClusterInstall := &hiveext.AgentClusterInstall{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: hiveext.AgentClusterInstallSpec{
+			ImageSetRef: *imageSetRef,
+		},
+	}
+	Expect(c.Create(ctx, agentClusterInstall)).To(BeNil())
+}
