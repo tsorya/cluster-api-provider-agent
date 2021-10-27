@@ -163,6 +163,7 @@ func (r *AgentClusterReconciler) createClusterDeployment(ctx context.Context, lo
 			PullSecretRef: agentCluster.Spec.PullSecretRef},
 	}
 	agentCluster.Status.ClusterDeploymentRef.Name = clusterDeployment.Name
+	agentCluster.Status.ClusterDeploymentRef.Namespace = clusterDeployment.Namespace
 	if err := r.Client.Create(ctx, clusterDeployment); err != nil {
 		log.WithError(err).Error("Failed to create ClusterDeployment")
 		return ctrl.Result{Requeue: true}, nil
