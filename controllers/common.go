@@ -18,8 +18,15 @@ package controllers
 
 import (
 	"context"
+	hiveext "github.com/openshift/assisted-service/api/hiveextension/v1beta1"
+	aiv1beta1 "github.com/openshift/assisted-service/api/v1beta1"
+	hivev1 "github.com/openshift/hive/apis/hive/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 
 	"github.com/openshift/assisted-service/pkg/requestid"
+	"k8s.io/client-go/kubernetes/scheme"
 )
 
 func addRequestIdIfNeeded(ctx context.Context) context.Context {
@@ -28,4 +35,13 @@ func addRequestIdIfNeeded(ctx context.Context) context.Context {
 		ctxWithReqID = requestid.ToContext(ctx, requestid.NewID())
 	}
 	return ctxWithReqID
+}
+
+func GetKubeClientSchemes(schemes *runtime.Scheme) *runtime.Scheme {
+	utilruntime.Must(scheme.AddToScheme(schemes))
+	utilruntime.Must(corev1.AddToScheme(schemes))
+	utilruntime.Must(aiv1beta1.AddToScheme(schemes))
+	utilruntime.Must(hivev1.AddToScheme(schemes))
+	utilruntime.Must(hiveext.AddToScheme(schemes))
+	return schemes
 }
