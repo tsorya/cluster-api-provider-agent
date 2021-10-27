@@ -24,6 +24,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 
 	"github.com/openshift/assisted-service/pkg/requestid"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -43,5 +44,6 @@ func GetKubeClientSchemes(schemes *runtime.Scheme) *runtime.Scheme {
 	utilruntime.Must(aiv1beta1.AddToScheme(schemes))
 	utilruntime.Must(hivev1.AddToScheme(schemes))
 	utilruntime.Must(hiveext.AddToScheme(schemes))
+	utilruntime.Must(clusterv1.AddToScheme(schemes))
 	return schemes
 }
