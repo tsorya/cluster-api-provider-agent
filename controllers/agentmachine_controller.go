@@ -23,7 +23,6 @@ import (
 
 	"github.com/go-openapi/swag"
 	aiv1beta1 "github.com/openshift/assisted-service/api/v1beta1"
-	logutil "github.com/openshift/assisted-service/pkg/log"
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -49,9 +48,8 @@ type AgentMachineReconciler struct {
 //+kubebuilder:rbac:groups=capi-provider.agent-install.openshift.io,resources=agentmachines/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=capi-provider.agent-install.openshift.io,resources=agentmachines/finalizers,verbs=update
 
-func (r *AgentMachineReconciler) Reconcile(originalCtx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	ctx := addRequestIdIfNeeded(originalCtx)
-	log := logutil.FromContext(ctx, r.Log).WithFields(
+func (r *AgentMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithFields(
 		logrus.Fields{
 			"agent_machine":           req.Name,
 			"agent_machine_namespace": req.Namespace,
