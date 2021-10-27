@@ -103,7 +103,7 @@ func (r *AgentClusterReconciler) handleImageSet(ctx context.Context, log logrus.
 		return r.createImageSet(ctx, log, agentClusterInstall, agentCluster)
 	}
 	clusterImageSet := &hivev1.ClusterImageSet{}
-	err = r.Get(ctx, types.NamespacedName{Namespace: "", Name: clusterDeployment.Spec.ClusterInstallRef.Name}, clusterImageSet)
+	err = r.Get(ctx, types.NamespacedName{Namespace: "", Name: agentClusterInstall.Spec.ImageSetRef.Name}, clusterImageSet)
 	if err != nil {
 		log.WithError(err).Error("Failed to get ClusterImageSet")
 		return ctrl.Result{Requeue: true}, err
@@ -146,7 +146,7 @@ func (r *AgentClusterReconciler) createImageSet(ctx context.Context, log logrus.
 		log.WithError(err).Error("Failed to update agentClusterInstall imageSetRef")
 		return ctrl.Result{Requeue: true}, err
 	}
-	return ctrl.Result{}, nil
+	return ctrl.Result{Requeue: true}, nil
 }
 
 func (r *AgentClusterReconciler) createClusterDeployment(ctx context.Context, log logrus.FieldLogger, agentCluster *capiproviderv1alpha1.AgentCluster) (ctrl.Result, error) {
