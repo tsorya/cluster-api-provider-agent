@@ -150,6 +150,21 @@ var _ = Describe("agentmachine reconcile", func() {
 		Expect(agentMachine.Status.Ready).To(BeEquivalentTo(true))
 	})
 
+	It("agentMachine no agents", func() {
+		// Agent0: not approved
+		agent0 := newAgent("agent-0", testNamespace, aiv1beta1.AgentSpec{Approved: false})
+		agent0.Status.Conditions = append(agent0.Status.Conditions, v1.Condition{Type: aiv1beta1.BoundCondition, Status: "False"})
+		agent0.Status.Conditions = append(agent0.Status.Conditions, v1.Condition{Type: aiv1beta1.ValidatedCondition, Status: "True"})
+		Expect(c.Create(ctx, agent0)).To(BeNil())
+
+		agentMachine := newAgentMachine("agentMachine-0", testNamespace, capiproviderv1alpha1.AgentMachineSpec{}, ctx, c, false)
+		Expect(c.Create(ctx, agentMachine)).To(BeNil())
+
+		result, err := amr.Reconcile(ctx, newAgentMachineRequest(agentMachine))
+		Expect(err).To(BeNil())
+		Expect(result).To(Equal(ctrl.Result{Requeue: true}))
+	})
+
 	It("agentMachine set clusterref later", func() {
 		agent := newAgent("agent-1", testNamespace, aiv1beta1.AgentSpec{Approved: true})
 		agent.Status.Conditions = append(agent.Status.Conditions, v1.Condition{Type: aiv1beta1.BoundCondition, Status: "False"})

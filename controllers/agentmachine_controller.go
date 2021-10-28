@@ -18,7 +18,6 @@ package controllers
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/go-openapi/swag"
@@ -120,7 +119,7 @@ func (r *AgentMachineReconciler) findAgent(ctx context.Context, log logrus.Field
 
 	if foundAgent == nil {
 		log.Info("Did not find any available Agents")
-		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, errors.New("did not find any available Agents")
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	log.Infof("Found agent to associate with AgentMachine: %s/%s", foundAgent.Namespace, foundAgent.Name)
