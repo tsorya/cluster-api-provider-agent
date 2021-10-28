@@ -153,6 +153,9 @@ func (r *AgentMachineReconciler) findAgent(ctx context.Context, log logrus.Field
 }
 
 func isValidAgent(agent *aiv1beta1.Agent, agentMachines *capiproviderv1alpha1.AgentMachineList) bool {
+	if !agent.Spec.Approved {
+		return false
+	}
 	for _, condition := range agent.Status.Conditions {
 		if condition.Type == aiv1beta1.BoundCondition && condition.Status != "False" {
 			return false

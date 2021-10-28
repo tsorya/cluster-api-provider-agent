@@ -132,7 +132,7 @@ var _ = Describe("agentmachine reconcile", func() {
 	})
 
 	It("agentMachine update status ready", func() {
-		agent := newAgent("agent-1", testNamespace, aiv1beta1.AgentSpec{ClusterDeploymentName: &aiv1beta1.ClusterReference{Namespace: testNamespace, Name: "dep"}})
+		agent := newAgent("agent-1", testNamespace, aiv1beta1.AgentSpec{Approved: true, ClusterDeploymentName: &aiv1beta1.ClusterReference{Namespace: testNamespace, Name: "dep"}})
 		agent.Status.Conditions = append(agent.Status.Conditions, v1.Condition{Type: aiv1beta1.BoundCondition, Status: "True"})
 		agent.Status.Conditions = append(agent.Status.Conditions, v1.Condition{Type: aiv1beta1.ValidatedCondition, Status: "True"})
 		agent.Status.Conditions = append(agent.Status.Conditions, v1.Condition{Type: aiv1beta1.InstalledCondition, Status: "True"})
@@ -151,7 +151,7 @@ var _ = Describe("agentmachine reconcile", func() {
 	})
 
 	It("agentMachine set clusterref later", func() {
-		agent := newAgent("agent-1", testNamespace, aiv1beta1.AgentSpec{})
+		agent := newAgent("agent-1", testNamespace, aiv1beta1.AgentSpec{Approved: true})
 		agent.Status.Conditions = append(agent.Status.Conditions, v1.Condition{Type: aiv1beta1.BoundCondition, Status: "False"})
 		agent.Status.Conditions = append(agent.Status.Conditions, v1.Condition{Type: aiv1beta1.ValidatedCondition, Status: "True"})
 		Expect(c.Create(ctx, agent)).To(BeNil())
@@ -188,13 +188,18 @@ var _ = Describe("agentmachine reconcile", func() {
 	})
 
 	It("agentMachine find agent end-to-end", func() {
+		// Agent0: not approved
+		agent0 := newAgent("agent-0", testNamespace, aiv1beta1.AgentSpec{Approved: false})
+		agent0.Status.Conditions = append(agent0.Status.Conditions, v1.Condition{Type: aiv1beta1.BoundCondition, Status: "False"})
+		agent0.Status.Conditions = append(agent0.Status.Conditions, v1.Condition{Type: aiv1beta1.ValidatedCondition, Status: "True"})
+		Expect(c.Create(ctx, agent0)).To(BeNil())
 		// Agent1: already bound
-		agent1 := newAgent("agent-1", testNamespace, aiv1beta1.AgentSpec{})
+		agent1 := newAgent("agent-1", testNamespace, aiv1beta1.AgentSpec{Approved: true})
 		agent1.Status.Conditions = append(agent1.Status.Conditions, v1.Condition{Type: aiv1beta1.BoundCondition, Status: "True"})
 		agent1.Status.Conditions = append(agent1.Status.Conditions, v1.Condition{Type: aiv1beta1.ValidatedCondition, Status: "True"})
 		Expect(c.Create(ctx, agent1)).To(BeNil())
 		// Agent2: OK to use, but another AgentMachine is already taking it
-		agent2 := newAgent("agent-2", testNamespace, aiv1beta1.AgentSpec{})
+		agent2 := newAgent("agent-2", testNamespace, aiv1beta1.AgentSpec{Approved: true})
 		agent2.Status.Conditions = append(agent2.Status.Conditions, v1.Condition{Type: aiv1beta1.BoundCondition, Status: "False"})
 		agent2.Status.Conditions = append(agent2.Status.Conditions, v1.Condition{Type: aiv1beta1.ValidatedCondition, Status: "True"})
 		Expect(c.Create(ctx, agent2)).To(BeNil())
@@ -202,17 +207,17 @@ var _ = Describe("agentmachine reconcile", func() {
 		agentMachine2.Status.AgentRef = &capiproviderv1alpha1.AgentReference{Namespace: testNamespace, Name: "agent-2"}
 		Expect(c.Create(ctx, agentMachine2)).To(BeNil())
 		// Agent3: validations are failing
-		agent3 := newAgent("agent-3", testNamespace, aiv1beta1.AgentSpec{})
+		agent3 := newAgent("agent-3", testNamespace, aiv1beta1.AgentSpec{Approved: true})
 		agent3.Status.Conditions = append(agent3.Status.Conditions, v1.Condition{Type: aiv1beta1.BoundCondition, Status: "False"})
 		agent3.Status.Conditions = append(agent3.Status.Conditions, v1.Condition{Type: aiv1beta1.ValidatedCondition, Status: "False"})
 		Expect(c.Create(ctx, agent3)).To(BeNil())
 		// Agent4: should use this one
-		agent4 := newAgent("agent-4", testNamespace, aiv1beta1.AgentSpec{})
+		agent4 := newAgent("agent-4", testNamespace, aiv1beta1.AgentSpec{Approved: true})
 		agent4.Status.Conditions = append(agent4.Status.Conditions, v1.Condition{Type: aiv1beta1.BoundCondition, Status: "False"})
 		agent4.Status.Conditions = append(agent4.Status.Conditions, v1.Condition{Type: aiv1beta1.ValidatedCondition, Status: "True"})
 		Expect(c.Create(ctx, agent4)).To(BeNil())
 		// Agent5: Also in use by another AgentMachine
-		agent5 := newAgent("agent-5", testNamespace, aiv1beta1.AgentSpec{})
+		agent5 := newAgent("agent-5", testNamespace, aiv1beta1.AgentSpec{Approved: true})
 		agent5.Status.Conditions = append(agent5.Status.Conditions, v1.Condition{Type: aiv1beta1.BoundCondition, Status: "False"})
 		agent5.Status.Conditions = append(agent5.Status.Conditions, v1.Condition{Type: aiv1beta1.ValidatedCondition, Status: "True"})
 		Expect(c.Create(ctx, agent5)).To(BeNil())
