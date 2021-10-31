@@ -24,6 +24,7 @@ import (
 	logutil "github.com/openshift/assisted-service/pkg/log"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"github.com/sirupsen/logrus"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -203,6 +204,9 @@ func (r *AgentClusterReconciler) createAgentClusterInstall(ctx context.Context, 
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      clusterDeployment.Name,
 			Namespace: clusterDeployment.Namespace,
+		},
+		Spec: hiveext.AgentClusterInstallSpec{
+			ClusterDeploymentRef: v1.LocalObjectReference{Name: clusterDeployment.Name},
 		},
 	}
 	return r.Client.Create(ctx, agentClusterInstall)

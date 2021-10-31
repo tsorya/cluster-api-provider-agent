@@ -298,6 +298,7 @@ func validateAllRefs(c client.Client, ctx context.Context, agentClusterName stri
 	agentClusterInstall := &hiveext.AgentClusterInstall{}
 	Expect(c.Get(ctx, key, agentClusterInstall)).To(BeNil())
 	Expect(agentClusterInstall.Spec.ImageSetRef.Name).To(Equal(agentClusterName))
+	Expect(agentClusterInstall.Spec.ClusterDeploymentRef.Name).To(Equal(agentClusterName))
 
 	clusterImageSet := &hivev1.ClusterImageSet{}
 	// clusterImageSet namespace should be empty
@@ -349,7 +350,8 @@ func createAgentClusterInstall(c client.Client, ctx context.Context, namespace s
 			Namespace: namespace,
 		},
 		Spec: hiveext.AgentClusterInstallSpec{
-			ImageSetRef: *imageSetRef,
+			ImageSetRef:          *imageSetRef,
+			ClusterDeploymentRef: corev1.LocalObjectReference{Name: name},
 		},
 	}
 	Expect(c.Create(ctx, agentClusterInstall)).To(BeNil())
