@@ -236,7 +236,7 @@ var _ = Describe("agentcluster reconcile", func() {
 		Expect(c.Create(ctx, agentCluster)).To(BeNil())
 
 		createAgentClusterInstall(c, ctx, agentCluster.Namespace, agentCluster.Name, &hivev1.ClusterImageSetReference{Name: ""})
-		createClusterImageSet(c, ctx, agentCluster.Name, "wrong-release-image")
+		createClusterImageSet(c, ctx, agentCluster.Name, "right-release-image")
 		createClusterDeployment(c, ctx, agentCluster, &hivev1.ClusterInstallLocalReference{
 			Kind:    "AgentClusterInstall",
 			Group:   hiveext.Group,
@@ -245,10 +245,10 @@ var _ = Describe("agentcluster reconcile", func() {
 		})
 
 		result, err := acr.Reconcile(ctx, newAgentClusterRequest(agentCluster))
-		Expect(err).NotTo(BeNil())
-		Expect(result).To(Equal(ctrl.Result{Requeue: true}))
+		Expect(err).To(BeNil())
+		Expect(result).To(Equal(ctrl.Result{}))
 	})
-	It("update imageSet releaseImage", func() {
+	It("clusterImageSet with wrong releaseImage", func() {
 		domain := "test-domain.com"
 		clusterName := "test-cluster-name"
 		pullSecretName := "test-pull-secret-name"
@@ -264,9 +264,9 @@ var _ = Describe("agentcluster reconcile", func() {
 		agentCluster.Status.ClusterDeploymentRef.Name = agentCluster.Name
 		agentCluster.Status.ClusterDeploymentRef.Namespace = agentCluster.Namespace
 		Expect(c.Create(ctx, agentCluster)).To(BeNil())
-
+		CISreleaseImage := "wrong-release-image"
 		createAgentClusterInstall(c, ctx, agentCluster.Namespace, agentCluster.Name, &hivev1.ClusterImageSetReference{Name: agentCluster.Name})
-		createClusterImageSet(c, ctx, agentCluster.Name, "wrong-release-image")
+		createClusterImageSet(c, ctx, agentCluster.Name, CISreleaseImage)
 		createClusterDeployment(c, ctx, agentCluster, &hivev1.ClusterInstallLocalReference{
 			Kind:    "AgentClusterInstall",
 			Group:   hiveext.Group,
@@ -275,10 +275,10 @@ var _ = Describe("agentcluster reconcile", func() {
 		})
 
 		result, err := acr.Reconcile(ctx, newAgentClusterRequest(agentCluster))
-		Expect(err).To(BeNil())
-		Expect(result).To(Equal(ctrl.Result{}))
+		Expect(err).NotTo(BeNil())
+		Expect(result).To(Equal(ctrl.Result{Requeue: true}))
 
-		validateAllRefs(c, ctx, agentCluster.Name, testNamespace, agentCluster.Spec.ReleaseImage)
+		validateAllRefs(c, ctx, agentCluster.Name, testNamespace, CISreleaseImage)
 	})
 })
 

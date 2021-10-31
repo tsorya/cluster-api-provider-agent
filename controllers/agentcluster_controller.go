@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	capiproviderv1alpha1 "github.com/eranco74/cluster-api-provider-agent/api/v1alpha1"
 	hiveext "github.com/openshift/assisted-service/api/hiveextension/v1beta1"
 	logutil "github.com/openshift/assisted-service/pkg/log"
@@ -100,29 +101,31 @@ func (r *AgentClusterReconciler) handleImageSet(ctx context.Context, log logrus.
 		return ctrl.Result{Requeue: true}, err
 	}
 	if agentClusterInstall.Spec.ImageSetRef.Name == "" {
-		return r.createImageSet(ctx, log, agentClusterInstall, agentCluster)
+		agentClusterInstall.Spec.ImageSetRef = hivev1.ClusterImageSetReference{Name: agentCluster.Name}
+		if err = r.Client.Update(ctx, agentClusterInstall); err != nil {
+			log.WithError(err).Error("Failed to update agentClusterInstall imageSetRef")
+			return ctrl.Result{Requeue: true}, err
+		}
 	}
 	clusterImageSet := &hivev1.ClusterImageSet{}
 	err = r.Get(ctx, types.NamespacedName{Namespace: "", Name: agentClusterInstall.Spec.ImageSetRef.Name}, clusterImageSet)
 	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return r.createImageSet(ctx, log, agentClusterInstall, agentCluster)
+		}
 		log.WithError(err).Error("Failed to get ClusterImageSet")
 		return ctrl.Result{Requeue: true}, err
 	}
+
 	if clusterImageSet.Spec.ReleaseImage != agentCluster.Spec.ReleaseImage {
-		return r.updateImageSetReleaseImage(ctx, log, clusterImageSet, agentCluster.Spec.ReleaseImage)
+		err = fmt.Errorf("clusterImageSet ReleaseImage (%s) doens't match agentCluster ReleaseImage (%s)",
+			clusterImageSet.Spec.ReleaseImage, agentCluster.Spec.ReleaseImage)
+		log.Error(err)
+		return ctrl.Result{Requeue: true}, err
 	}
 	return ctrl.Result{}, nil
 }
 
-func (r *AgentClusterReconciler) updateImageSetReleaseImage(ctx context.Context, log logrus.FieldLogger, clusterImageSet *hivev1.ClusterImageSet, releaseImage string) (ctrl.Result, error) {
-	log.Infof("Updating CLusterImageSet ReleaseImage to: %s", releaseImage)
-	clusterImageSet.Spec.ReleaseImage = releaseImage
-	if err := r.Client.Update(ctx, clusterImageSet); err != nil {
-		log.WithError(err).Error("Failed to update clusterImageSet releaseImage")
-		return ctrl.Result{Requeue: true}, err
-	}
-	return ctrl.Result{Requeue: true}, nil
-}
 func (r *AgentClusterReconciler) createImageSet(ctx context.Context, log logrus.FieldLogger, agentClusterInstall *hiveext.AgentClusterInstall, agentCluster *capiproviderv1alpha1.AgentCluster) (ctrl.Result, error) {
 	log.Info("Creating ClusterImageSet")
 	clusterImageSet := &hivev1.ClusterImageSet{
@@ -138,12 +141,6 @@ func (r *AgentClusterReconciler) createImageSet(ctx context.Context, log logrus.
 	}
 	if err := r.Client.Create(ctx, clusterImageSet); err != nil {
 		log.WithError(err).Error("Failed to create ClusterImageSet")
-		return ctrl.Result{Requeue: true}, err
-	}
-
-	agentClusterInstall.Spec.ImageSetRef = hivev1.ClusterImageSetReference{Name: agentCluster.Name}
-	if err := r.Client.Update(ctx, agentClusterInstall); err != nil {
-		log.WithError(err).Error("Failed to update agentClusterInstall imageSetRef")
 		return ctrl.Result{Requeue: true}, err
 	}
 	return ctrl.Result{Requeue: true}, nil
