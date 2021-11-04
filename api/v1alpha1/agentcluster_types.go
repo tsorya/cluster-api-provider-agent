@@ -48,6 +48,21 @@ type AgentClusterSpec struct {
 
 	// PullSecretRef is the reference to the secret to use when pulling images.
 	PullSecretRef *corev1.LocalObjectReference `json:"pullSecretRef,omitempty"`
+
+	// IgnitionEndpoint store the data to of the custom ignition endpoint.
+	// +optional
+	IgnitionEndpoint *IgnitionEndpoint `json:"ignitionEndpoint,omitempty"`
+}
+
+// IgnitionEndpoint store the data to of the custom ignition endpoint.
+type IgnitionEndpoint struct {
+	// Url store the URL of the custom ignition endpoint.
+	// +optional
+	Url string `json:"url,omitempty"`
+
+	// CaCertificate a CA certficate to be used when contacting the URL via https.
+	// +optional
+	CaCertificate string `json:"caCertificate,omitempty"`
 }
 
 // AgentClusterStatus defines the observed state of AgentCluster

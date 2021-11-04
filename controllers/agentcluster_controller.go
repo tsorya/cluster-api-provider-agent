@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+
 	capiproviderv1alpha1 "github.com/eranco74/cluster-api-provider-agent/api/v1alpha1"
 	hiveext "github.com/openshift/assisted-service/api/hiveextension/v1beta1"
 	logutil "github.com/openshift/assisted-service/pkg/log"
@@ -84,7 +85,7 @@ func (r *AgentClusterReconciler) Reconcile(originalCtx context.Context, req ctrl
 		return r.SetAgentClusterInstallRef(ctx, log, clusterDeployment)
 	}
 
-	result, err := r.handleImageSet(ctx, log, agentCluster, clusterDeployment)
+	result, err := r.updateAgentClusterInstall(ctx, log, agentCluster, clusterDeployment)
 	if err != nil {
 		return result, err
 	}
@@ -93,7 +94,7 @@ func (r *AgentClusterReconciler) Reconcile(originalCtx context.Context, req ctrl
 	return r.updateClusterStatus(ctx, log, agentCluster)
 }
 
-func (r *AgentClusterReconciler) handleImageSet(ctx context.Context, log logrus.FieldLogger, agentCluster *capiproviderv1alpha1.AgentCluster, clusterDeployment *hivev1.ClusterDeployment) (ctrl.Result, error) {
+func (r *AgentClusterReconciler) updateAgentClusterInstall(ctx context.Context, log logrus.FieldLogger, agentCluster *capiproviderv1alpha1.AgentCluster, clusterDeployment *hivev1.ClusterDeployment) (ctrl.Result, error) {
 	// Make sure the agentClusterInstall imageSetRef match the agentCluster.Spec.releaseImage
 	agentClusterInstall := &hiveext.AgentClusterInstall{}
 	err := r.Get(ctx, types.NamespacedName{Namespace: agentCluster.Status.ClusterDeploymentRef.Namespace, Name: clusterDeployment.Spec.ClusterInstallRef.Name}, agentClusterInstall)
@@ -101,8 +102,20 @@ func (r *AgentClusterReconciler) handleImageSet(ctx context.Context, log logrus.
 		log.WithError(err).Error("Failed to get AgentClusterInstall")
 		return ctrl.Result{Requeue: true}, err
 	}
+	updateACI := false
 	if agentClusterInstall.Spec.ImageSetRef.Name == "" {
 		agentClusterInstall.Spec.ImageSetRef = hivev1.ClusterImageSetReference{Name: agentCluster.Name}
+		updateACI = true
+
+	}
+	if agentClusterInstall.Spec.IgnitionEndpoint == nil && agentCluster.Spec.IgnitionEndpoint != nil {
+		agentClusterInstall.Spec.IgnitionEndpoint = &hiveext.IgnitionEndpoint{
+			Url:           agentCluster.Spec.IgnitionEndpoint.Url,
+			CaCertificate: agentCluster.Spec.IgnitionEndpoint.CaCertificate,
+		}
+		updateACI = true
+	}
+	if updateACI {
 		if err = r.Client.Update(ctx, agentClusterInstall); err != nil {
 			log.WithError(err).Error("Failed to update agentClusterInstall imageSetRef")
 			return ctrl.Result{Requeue: true}, err
