@@ -11,6 +11,7 @@ replace sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.0.0
 // k8s.io/klog/v2 on v2.10.x
 require (
 	github.com/coreos/ignition/v2 v2.9.0
+	github.com/eranco74/cluster-api-provider-agent/api v0.0.0
 	github.com/go-openapi/swag v0.19.14
 	github.com/golang/mock v1.6.0
 	github.com/onsi/ginkgo v1.16.4
@@ -19,8 +20,8 @@ require (
 	github.com/openshift/custom-resource-status v1.1.0
 	github.com/openshift/hive/apis v0.0.0-20211012200111-a691d6f21d9e
 	github.com/sirupsen/logrus v1.8.1
-	k8s.io/api v0.22.2
-	k8s.io/apimachinery v0.22.2
+	k8s.io/api v0.22.3
+	k8s.io/apimachinery v0.22.3
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/utils v0.0.0-20210930125809-cb0fa318a74b
 	sigs.k8s.io/cluster-api v1.0.0
@@ -28,6 +29,7 @@ require (
 )
 
 replace (
+	github.com/eranco74/cluster-api-provider-agent/api => ./api
 	github.com/metal3-io/baremetal-operator => github.com/openshift/baremetal-operator v0.0.0-20210409032903-31b989a197eb // Use OpenShift fork
 	k8s.io/api => k8s.io/api v0.22.2
 	k8s.io/client-go => k8s.io/client-go v0.22.2
