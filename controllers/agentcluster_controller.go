@@ -22,7 +22,6 @@ import (
 
 	capiproviderv1alpha1 "github.com/eranco74/cluster-api-provider-agent/api/v1alpha1"
 	hiveext "github.com/openshift/assisted-service/api/hiveextension/v1beta1"
-	logutil "github.com/openshift/assisted-service/pkg/log"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
@@ -48,9 +47,8 @@ type AgentClusterReconciler struct {
 //+kubebuilder:rbac:groups=hive.openshift.io,resources=clusterimagesets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=extensions.hive.openshift.io,resources=agentclusterinstalls,verbs=get;list;watch;create;update;patch;delete
 
-func (r *AgentClusterReconciler) Reconcile(originalCtx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	ctx := addRequestIdIfNeeded(originalCtx)
-	log := logutil.FromContext(ctx, r.Log).WithFields(
+func (r *AgentClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := r.Log.WithFields(
 		logrus.Fields{
 			"agent_cluster":           req.Name,
 			"agent_cluster_namespace": req.Namespace,

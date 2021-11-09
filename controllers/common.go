@@ -17,7 +17,6 @@ limitations under the License.
 package controllers
 
 import (
-	"context"
 	hiveext "github.com/openshift/assisted-service/api/hiveextension/v1beta1"
 	aiv1beta1 "github.com/openshift/assisted-service/api/v1beta1"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
@@ -26,17 +25,8 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 
-	"github.com/openshift/assisted-service/pkg/requestid"
 	"k8s.io/client-go/kubernetes/scheme"
 )
-
-func addRequestIdIfNeeded(ctx context.Context) context.Context {
-	ctxWithReqID := ctx
-	if requestid.FromContext(ctx) == "" {
-		ctxWithReqID = requestid.ToContext(ctx, requestid.NewID())
-	}
-	return ctxWithReqID
-}
 
 func GetKubeClientSchemes(schemes *runtime.Scheme) *runtime.Scheme {
 	utilruntime.Must(scheme.AddToScheme(schemes))
