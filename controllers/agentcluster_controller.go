@@ -101,6 +101,12 @@ func (r *AgentClusterReconciler) updateAgentClusterInstall(ctx context.Context, 
 		return ctrl.Result{Requeue: true}, err
 	}
 	updateACI := false
+
+	if agentClusterInstall.Spec.ProvisionRequirements.ControlPlaneAgents < 1 {
+		agentClusterInstall.Spec.ProvisionRequirements.ControlPlaneAgents = 3
+		updateACI = true
+	}
+
 	if agentClusterInstall.Spec.ImageSetRef.Name == "" {
 		agentClusterInstall.Spec.ImageSetRef = hivev1.ClusterImageSetReference{Name: agentCluster.Name}
 		updateACI = true

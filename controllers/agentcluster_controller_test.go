@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+
 	capiproviderv1alpha1 "github.com/eranco74/cluster-api-provider-agent/api/v1alpha1"
 	"github.com/golang/mock/gomock"
 	. "github.com/onsi/ginkgo"
@@ -299,6 +300,7 @@ func validateAllRefs(c client.Client, ctx context.Context, agentClusterName stri
 	Expect(c.Get(ctx, key, agentClusterInstall)).To(BeNil())
 	Expect(agentClusterInstall.Spec.ImageSetRef.Name).To(Equal(agentClusterName))
 	Expect(agentClusterInstall.Spec.ClusterDeploymentRef.Name).To(Equal(agentClusterName))
+	Expect(agentClusterInstall.Spec.ProvisionRequirements.ControlPlaneAgents).To(Equal(3))
 
 	clusterImageSet := &hivev1.ClusterImageSet{}
 	// clusterImageSet namespace should be empty
