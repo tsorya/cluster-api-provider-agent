@@ -64,11 +64,6 @@ func (r *AgentClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// If the agentCluster is ready, we have nothing to do
-	if agentCluster.Status.Ready {
-		return ctrl.Result{}, nil
-	}
-
 	// If the agentCluster has no reference to a ClusterDeployment, create one
 	if agentCluster.Status.ClusterDeploymentRef.Name == "" {
 		return r.createClusterDeployment(ctx, log, agentCluster)
@@ -113,6 +108,7 @@ func (r *AgentClusterReconciler) updateAgentClusterInstall(ctx context.Context, 
 
 	}
 	if agentClusterInstall.Spec.IgnitionEndpoint == nil && agentCluster.Spec.IgnitionEndpoint != nil {
+		log.Info("Updating ignition endpoint")
 		agentClusterInstall.Spec.IgnitionEndpoint = &hiveext.IgnitionEndpoint{
 			Url:           agentCluster.Spec.IgnitionEndpoint.Url,
 			CaCertificate: agentCluster.Spec.IgnitionEndpoint.CaCertificate,
