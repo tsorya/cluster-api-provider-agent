@@ -97,7 +97,8 @@ var _ = Describe("agentcluster reconcile", func() {
 			PullSecretRef: &corev1.LocalObjectReference{
 				Name: pullSecretName,
 			},
-			ReleaseImage: "release-image",
+			ReleaseImage:     "release-image",
+			IgnitionEndpoint: &capiproviderv1alpha1.IgnitionEndpoint{Url: "https://1.2.3.4:555/ignition"},
 		})
 		Expect(c.Create(ctx, agentCluster)).To(BeNil())
 
@@ -122,7 +123,8 @@ var _ = Describe("agentcluster reconcile", func() {
 			PullSecretRef: &corev1.LocalObjectReference{
 				Name: pullSecretName,
 			},
-			ReleaseImage: "release-image",
+			ReleaseImage:     "release-image",
+			IgnitionEndpoint: &capiproviderv1alpha1.IgnitionEndpoint{Url: "https://1.2.3.4:555/ignition"},
 		})
 		agentCluster.Status.ClusterDeploymentRef.Name = "missing-cluster-deployment-name"
 		Expect(c.Create(ctx, agentCluster)).To(BeNil())
@@ -142,7 +144,8 @@ var _ = Describe("agentcluster reconcile", func() {
 			PullSecretRef: &corev1.LocalObjectReference{
 				Name: pullSecretName,
 			},
-			ReleaseImage: "release-image",
+			ReleaseImage:     "release-image",
+			IgnitionEndpoint: &capiproviderv1alpha1.IgnitionEndpoint{Url: "https://1.2.3.4:555/ignition"},
 		})
 		agentCluster.Status.ClusterDeploymentRef.Name = agentCluster.Name
 		agentCluster.Status.ClusterDeploymentRef.Namespace = agentCluster.Namespace
@@ -171,7 +174,8 @@ var _ = Describe("agentcluster reconcile", func() {
 			PullSecretRef: &corev1.LocalObjectReference{
 				Name: pullSecretName,
 			},
-			ReleaseImage: "release-image",
+			ReleaseImage:     "release-image",
+			IgnitionEndpoint: &capiproviderv1alpha1.IgnitionEndpoint{Url: "https://1.2.3.4:555/ignition"},
 		})
 
 		agentCluster.Status.ClusterDeploymentRef.Name = agentCluster.Name
@@ -199,7 +203,8 @@ var _ = Describe("agentcluster reconcile", func() {
 			PullSecretRef: &corev1.LocalObjectReference{
 				Name: pullSecretName,
 			},
-			ReleaseImage: "release-image",
+			ReleaseImage:     "release-image",
+			IgnitionEndpoint: &capiproviderv1alpha1.IgnitionEndpoint{Url: "https://1.2.3.4:555/ignition"},
 		})
 
 		agentCluster.Status.ClusterDeploymentRef.Name = agentCluster.Name
@@ -229,7 +234,8 @@ var _ = Describe("agentcluster reconcile", func() {
 			PullSecretRef: &corev1.LocalObjectReference{
 				Name: pullSecretName,
 			},
-			ReleaseImage: "right-release-image",
+			ReleaseImage:     "right-release-image",
+			IgnitionEndpoint: &capiproviderv1alpha1.IgnitionEndpoint{Url: "https://1.2.3.4:555/ignition"},
 		})
 
 		agentCluster.Status.ClusterDeploymentRef.Name = agentCluster.Name
@@ -259,7 +265,8 @@ var _ = Describe("agentcluster reconcile", func() {
 			PullSecretRef: &corev1.LocalObjectReference{
 				Name: pullSecretName,
 			},
-			ReleaseImage: "right-release-image",
+			ReleaseImage:     "right-release-image",
+			IgnitionEndpoint: &capiproviderv1alpha1.IgnitionEndpoint{Url: "https://1.2.3.4:555/ignition"},
 		})
 
 		agentCluster.Status.ClusterDeploymentRef.Name = agentCluster.Name
@@ -301,6 +308,7 @@ func validateAllRefs(c client.Client, ctx context.Context, agentClusterName stri
 	Expect(agentClusterInstall.Spec.ImageSetRef.Name).To(Equal(agentClusterName))
 	Expect(agentClusterInstall.Spec.ClusterDeploymentRef.Name).To(Equal(agentClusterName))
 	Expect(agentClusterInstall.Spec.ProvisionRequirements.ControlPlaneAgents).To(Equal(3))
+	Expect(agentClusterInstall.Spec.IgnitionEndpoint.Url).To(Equal("https://1.2.3.4:555"))
 
 	clusterImageSet := &hivev1.ClusterImageSet{}
 	// clusterImageSet namespace should be empty

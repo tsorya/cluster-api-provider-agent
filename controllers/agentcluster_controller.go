@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	capiproviderv1alpha1 "github.com/eranco74/cluster-api-provider-agent/api/v1alpha1"
 	hiveext "github.com/openshift/assisted-service/api/hiveextension/v1beta1"
@@ -109,8 +110,11 @@ func (r *AgentClusterReconciler) updateAgentClusterInstall(ctx context.Context, 
 	}
 	if agentClusterInstall.Spec.IgnitionEndpoint == nil && agentCluster.Spec.IgnitionEndpoint != nil {
 		log.Info("Updating ignition endpoint")
+		url := agentCluster.Spec.IgnitionEndpoint.Url
 		agentClusterInstall.Spec.IgnitionEndpoint = &hiveext.IgnitionEndpoint{
-			Url:           agentCluster.Spec.IgnitionEndpoint.Url,
+			// Currently assume something like https://1.2.3.4:555/ignition, otherwise this will fail
+			// TODO: Replace with something more robust
+			Url:           url[0:strings.LastIndex(url, "/")],
 			CaCertificate: agentCluster.Spec.IgnitionEndpoint.CaCertificate,
 		}
 		updateACI = true
