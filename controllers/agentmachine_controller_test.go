@@ -135,7 +135,9 @@ var _ = Describe("agentmachine reconcile", func() {
 	})
 
 	It("agentMachine update status ready", func() {
-		agent := newAgent("agent-1", testNamespace, aiv1beta1.AgentSpec{Approved: true, ClusterDeploymentName: &aiv1beta1.ClusterReference{Namespace: testNamespace, Name: "dep"}})
+		agent := newAgent("agent-1", testNamespace, aiv1beta1.AgentSpec{Approved: true,
+			IgnitionEndpointToken: "foo",
+			ClusterDeploymentName: &aiv1beta1.ClusterReference{Namespace: testNamespace, Name: "dep"}})
 		agent.Status.Conditions = append(agent.Status.Conditions, v1.Condition{Type: aiv1beta1.BoundCondition, Status: "True"})
 		agent.Status.Conditions = append(agent.Status.Conditions, v1.Condition{Type: aiv1beta1.ValidatedCondition, Status: "True"})
 		agent.Status.Conditions = append(agent.Status.Conditions, v1.Condition{Type: aiv1beta1.InstalledCondition, Status: "True"})
