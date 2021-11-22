@@ -52,6 +52,10 @@ type AgentClusterSpec struct {
 	// IgnitionEndpoint store the data to of the custom ignition endpoint.
 	// +optional
 	IgnitionEndpoint *IgnitionEndpoint `json:"ignitionEndpoint,omitempty"`
+
+	// ControlPlaneEndpoint represents the endpoint used to communicate with the control plane.
+	// +optional
+	ControlPlaneEndpoint clusterv1.APIEndpoint `json:"controlPlaneEndpoint"`
 }
 
 // IgnitionEndpoint store the data to of the custom ignition endpoint.
