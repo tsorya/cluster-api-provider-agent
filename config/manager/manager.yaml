@@ -29,7 +29,7 @@ spec:
         - /manager
         args:
         - --leader-elect
-        image: controller:latest
+        image: quay.io/eranco74/cluster-api-provider-agent:latest
         name: manager
         securityContext:
           allowPrivilegeEscalation: false
