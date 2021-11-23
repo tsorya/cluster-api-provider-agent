@@ -40,6 +40,7 @@ import (
 )
 
 const defaultRequeueAfterOnError = 10 * time.Second
+const defaultRequeueWaitingForAgentToBeInstalled = 20 * time.Second
 
 // AgentMachineReconciler reconciles a AgentMachine object
 type AgentMachineReconciler struct {
@@ -324,8 +325,11 @@ func (r *AgentMachineReconciler) updateAgentStatus(ctx context.Context, log logr
 		log.WithError(updateErr).Error("failed to update AgentMachine Status")
 		return ctrl.Result{Requeue: true}, nil
 	}
-
-	return ctrl.Result{}, nil
+	if agentMachine.Status.Ready {
+		// No need to requeue in case the agentMachine is ready
+		return ctrl.Result{}, nil
+	}
+	return ctrl.Result{RequeueAfter: defaultRequeueWaitingForAgentToBeInstalled}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
