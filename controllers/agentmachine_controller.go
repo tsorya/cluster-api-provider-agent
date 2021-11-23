@@ -150,9 +150,13 @@ func (r *AgentMachineReconciler) findAgent(ctx context.Context, log logrus.Field
 
 	log.Infof("Found agent to associate with AgentMachine: %s/%s", foundAgent.Namespace, foundAgent.Name)
 
-	agentMachine.Status.AgentRef = &capiproviderv1alpha1.AgentReference{Namespace: foundAgent.Namespace, Name: foundAgent.Name}
-	agentMachine.Spec.ProviderID = swag.String("agent://" + foundAgent.Status.Inventory.SystemVendor.SerialNumber)
+	agentMachine.Spec.ProviderID = swag.String("agent://" + foundAgent.Name)
+	if err := r.Update(ctx, agentMachine); err != nil {
+		log.WithError(err).Error("failed to update AgentMachine Spec")
+		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, nil
+	}
 
+	agentMachine.Status.AgentRef = &capiproviderv1alpha1.AgentReference{Namespace: foundAgent.Namespace, Name: foundAgent.Name}
 	var machineAddresses []clusterv1.MachineAddress
 	for _, iface := range foundAgent.Status.Inventory.Interfaces {
 		if !iface.HasCarrier {
