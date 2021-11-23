@@ -27,6 +27,7 @@ import (
 	"github.com/go-openapi/swag"
 	aiv1beta1 "github.com/openshift/assisted-service/api/v1beta1"
 	"github.com/sirupsen/logrus"
+	"github.com/thoas/go-funk"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -35,12 +36,16 @@ import (
 	clusterutil "sigs.k8s.io/cluster-api/util"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	capiproviderv1alpha1 "github.com/eranco74/cluster-api-provider-agent/api/v1alpha1"
 )
 
-const defaultRequeueAfterOnError = 10 * time.Second
-const defaultRequeueWaitingForAgentToBeInstalled = 20 * time.Second
+const (
+	defaultRequeueAfterOnError                 = 10 * time.Second
+	defaultRequeueWaitingForAgentToBeInstalled = 20 * time.Second
+	AgentMachineFinalizerName                  = "agentmachine." + aiv1beta1.Group + "/deprovision"
+)
 
 // AgentMachineReconciler reconciles a AgentMachine object
 type AgentMachineReconciler struct {
@@ -73,6 +78,39 @@ func (r *AgentMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	if err := r.Get(ctx, req.NamespacedName, agentMachine); err != nil {
 		log.WithError(err).Errorf("Failed to get agentMachine %s", req.NamespacedName)
 		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	if agentMachine.ObjectMeta.DeletionTimestamp.IsZero() { // AgentMachine not being deleted
+		// Register a finalizer if it is absent.
+		if !funk.ContainsString(agentMachine.GetFinalizers(), AgentMachineFinalizerName) {
+			controllerutil.AddFinalizer(agentMachine, AgentMachineFinalizerName)
+			if err := r.Update(ctx, agentMachine); err != nil {
+				log.WithError(err).Errorf("failed to add finalizer %s to resource %s %s", AgentMachineFinalizerName, agentMachine.Name, agentMachine.Namespace)
+				return ctrl.Result{Requeue: true}, err
+			}
+		}
+	} else { // AgentMachine is being deleted
+		if funk.ContainsString(agentMachine.GetFinalizers(), AgentMachineFinalizerName) {
+			// deletion finalizer found, unbind the Agent from the ClusterDeployment
+			agent := &aiv1beta1.Agent{}
+			agentRef := types.NamespacedName{Name: agentMachine.Status.AgentRef.Name, Namespace: agentMachine.Status.AgentRef.Namespace}
+			if err := r.Get(ctx, agentRef, agent); err != nil {
+				log.WithError(err).Errorf("Failed to get agent %s", agentRef)
+				return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
+			}
+			agent.Spec.ClusterDeploymentName = nil
+			if err := r.Update(ctx, agent); err != nil {
+				log.WithError(err).Error("failed to update Agent with ClusterDeployment ref")
+				return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
+			}
+		}
+
+		// remove our finalizer from the list and update it.
+		controllerutil.RemoveFinalizer(agentMachine, AgentMachineFinalizerName)
+		if err := r.Update(ctx, agentMachine); err != nil {
+			log.WithError(err).Errorf("failed to remove finalizer %s from resource %s %s", AgentMachineFinalizerName, agentMachine.Name, agentMachine.Namespace)
+			return ctrl.Result{Requeue: true}, err
+		}
 	}
 
 	// If the AgentMachine is ready, we have nothing to do
@@ -219,9 +257,9 @@ func (r *AgentMachineReconciler) setAgentIgnitionEndpoint(ctx context.Context, l
 		agent.Spec.IgnitionEndpointToken = (*header.Value)[len(expectedPrefix):]
 	}
 
-	if agentUpdateErr := r.Update(ctx, agent); err != nil {
+	if agentUpdateErr := r.Update(ctx, agent); agentUpdateErr != nil {
 		log.WithError(agentUpdateErr).Error("failed to update Agent with ClusterDeployment ref")
-		return false, err
+		return false, agentUpdateErr
 	}
 	log.Info("Successfully updated Ignition endpoint token and MachineConfigPool")
 	return true, nil
@@ -261,8 +299,8 @@ func (r *AgentMachineReconciler) setAgentClusterDeploymentRef(ctx context.Contex
 
 	agent.Spec.ClusterDeploymentName = &aiv1beta1.ClusterReference{Namespace: clusterDeploymentRef.Namespace, Name: clusterDeploymentRef.Name}
 
-	if agentUpdateErr := r.Update(ctx, agent); err != nil {
-		log.WithError(agentUpdateErr).Error("failed to update Agent with ClusterDeployment ref")
+	if err := r.Update(ctx, agent); err != nil {
+		log.WithError(err).Error("failed to update Agent with ClusterDeployment ref")
 		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
 	}
 
