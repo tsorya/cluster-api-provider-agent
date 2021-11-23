@@ -157,19 +157,7 @@ func (r *AgentMachineReconciler) findAgent(ctx context.Context, log logrus.Field
 	}
 
 	agentMachine.Status.AgentRef = &capiproviderv1alpha1.AgentReference{Namespace: foundAgent.Namespace, Name: foundAgent.Name}
-	var machineAddresses []clusterv1.MachineAddress
-	for _, iface := range foundAgent.Status.Inventory.Interfaces {
-		if !iface.HasCarrier {
-			continue
-		}
-		for _, addr := range iface.IPV4Addresses {
-			machineAddresses = append(machineAddresses, clusterv1.MachineAddress{
-				Type:    clusterv1.MachineExternalIP,
-				Address: addr,
-			})
-		}
-	}
-	agentMachine.Status.Addresses = machineAddresses
+	agentMachine.Status.Addresses = getAddresses(foundAgent)
 	agentMachine.Status.Ready = false
 
 	if err := r.Status().Update(ctx, agentMachine); err != nil {
@@ -341,4 +329,30 @@ func (r *AgentMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&capiproviderv1alpha1.AgentMachine{}).
 		Complete(r)
+}
+
+func getAddresses(foundAgent *aiv1beta1.Agent) []clusterv1.MachineAddress {
+	var machineAddresses []clusterv1.MachineAddress
+	for _, iface := range foundAgent.Status.Inventory.Interfaces {
+		if !iface.HasCarrier {
+			continue
+		}
+		for _, addr := range iface.IPV4Addresses {
+			machineAddresses = append(machineAddresses, clusterv1.MachineAddress{
+				Type:    clusterv1.MachineExternalIP,
+				Address: addr,
+			})
+		}
+	}
+	// use requested hostname
+	hostname := foundAgent.Spec.Hostname
+	// in case the requested hostname is empty use the hostname from the status
+	if hostname == "" {
+		hostname = foundAgent.Status.Hostname
+	}
+	machineAddresses = append(machineAddresses, clusterv1.MachineAddress{
+		Type:    clusterv1.MachineInternalDNS,
+		Address: hostname,
+	})
+	return machineAddresses
 }
