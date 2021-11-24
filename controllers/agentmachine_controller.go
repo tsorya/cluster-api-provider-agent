@@ -153,7 +153,7 @@ func (r *AgentMachineReconciler) findAgent(ctx context.Context, log logrus.Field
 	agentMachine.Spec.ProviderID = swag.String("agent://" + foundAgent.Name)
 	if err := r.Update(ctx, agentMachine); err != nil {
 		log.WithError(err).Error("failed to update AgentMachine Spec")
-		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, nil
+		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
 	}
 
 	agentMachine.Status.AgentRef = &capiproviderv1alpha1.AgentReference{Namespace: foundAgent.Namespace, Name: foundAgent.Name}
@@ -162,7 +162,7 @@ func (r *AgentMachineReconciler) findAgent(ctx context.Context, log logrus.Field
 
 	if err := r.Status().Update(ctx, agentMachine); err != nil {
 		log.WithError(err).Error("failed to update AgentMachine Status")
-		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, nil
+		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
 	}
 
 	return ctrl.Result{}, nil
