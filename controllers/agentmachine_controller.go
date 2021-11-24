@@ -378,7 +378,7 @@ func getAddresses(foundAgent *aiv1beta1.Agent) []clusterv1.MachineAddress {
 		for _, addr := range iface.IPV4Addresses {
 			machineAddresses = append(machineAddresses, clusterv1.MachineAddress{
 				Type:    clusterv1.MachineExternalIP,
-				Address: addr,
+				Address: addr[:strings.LastIndex(addr, "/")],
 			})
 		}
 	}
