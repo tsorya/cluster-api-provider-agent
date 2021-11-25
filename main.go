@@ -78,11 +78,12 @@ func main() {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
-
+	logger := logrus.New()
+	logger.SetReportCaller(true)
 	if err = (&controllers.AgentMachineReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-		Log:    logrus.New(),
+		Log:    logger,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AgentMachine")
 		os.Exit(1)
@@ -91,7 +92,7 @@ func main() {
 	if err = (&controllers.AgentClusterReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-		Log:    logrus.New(),
+		Log:    logger,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AgentCluster")
 		os.Exit(1)
