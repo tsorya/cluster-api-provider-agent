@@ -92,16 +92,18 @@ func (r *AgentMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	} else { // AgentMachine is being deleted
 		if funk.ContainsString(agentMachine.GetFinalizers(), AgentMachineFinalizerName) {
 			// deletion finalizer found, unbind the Agent from the ClusterDeployment
-			agent := &aiv1beta1.Agent{}
-			agentRef := types.NamespacedName{Name: agentMachine.Status.AgentRef.Name, Namespace: agentMachine.Status.AgentRef.Namespace}
-			if err := r.Get(ctx, agentRef, agent); err != nil {
-				log.WithError(err).Errorf("Failed to get agent %s", agentRef)
-				return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
-			}
-			agent.Spec.ClusterDeploymentName = nil
-			if err := r.Update(ctx, agent); err != nil {
-				log.WithError(err).Error("failed to update Agent with ClusterDeployment ref")
-				return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
+			if agentMachine.Status.AgentRef != nil {
+				agent := &aiv1beta1.Agent{}
+				agentRef := types.NamespacedName{Name: agentMachine.Status.AgentRef.Name, Namespace: agentMachine.Status.AgentRef.Namespace}
+				if err := r.Get(ctx, agentRef, agent); err != nil {
+					log.WithError(err).Errorf("Failed to get agent %s", agentRef)
+					return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
+				}
+				agent.Spec.ClusterDeploymentName = nil
+				if err := r.Update(ctx, agent); err != nil {
+					log.WithError(err).Error("failed to update Agent with ClusterDeployment ref")
+					return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
+				}
 			}
 		}
 
@@ -111,6 +113,8 @@ func (r *AgentMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			log.WithError(err).Errorf("failed to remove finalizer %s from resource %s %s", AgentMachineFinalizerName, agentMachine.Name, agentMachine.Namespace)
 			return ctrl.Result{Requeue: true}, err
 		}
+
+		return ctrl.Result{}, nil
 	}
 
 	// If the AgentMachine is ready, we have nothing to do
@@ -386,7 +390,7 @@ func getAddresses(foundAgent *aiv1beta1.Agent) []clusterv1.MachineAddress {
 	hostname := foundAgent.Spec.Hostname
 	// in case the requested hostname is empty use the hostname from the status
 	if hostname == "" {
-		hostname = foundAgent.Status.Hostname
+		hostname = foundAgent.Status.Inventory.Hostname
 	}
 	machineAddresses = append(machineAddresses, clusterv1.MachineAddress{
 		Type:    clusterv1.MachineInternalDNS,

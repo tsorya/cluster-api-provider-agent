@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	ignitionapi "github.com/coreos/ignition/v2/config/v3_1/types"
 	capiproviderv1alpha1 "github.com/eranco74/cluster-api-provider-agent/api/v1alpha1"
@@ -15,7 +16,9 @@ import (
 	v1 "github.com/openshift/custom-resource-status/conditions/v1"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"github.com/sirupsen/logrus"
+	"github.com/thoas/go-funk"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -24,6 +27,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	fakeclient "sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 func init() {
@@ -204,7 +208,46 @@ var _ = Describe("agentmachine reconcile", func() {
 
 		Expect(c.Get(ctx, types.NamespacedName{Namespace: testNamespace, Name: "agent-1"}, agent)).To(BeNil())
 		Expect(agent.Spec.ClusterDeploymentName.Name).To(BeEquivalentTo("cluster-deployment-agentMachine-1"))
+	})
 
+	It("agentMachine set addresses", func() {
+		agent := newAgent("agent-1", testNamespace, aiv1beta1.AgentSpec{Approved: true})
+		agent.Status.Inventory.Hostname = "agent1"
+		agent.Status.Inventory.Interfaces = []aiv1beta1.HostInterface{
+			{
+				HasCarrier:    true,
+				IPV4Addresses: []string{"1.2.3.4/24", "2.3.4.5/24"},
+			},
+			{
+				HasCarrier:    false,
+				IPV6Addresses: []string{"9.9.9.9/24"},
+			},
+			{
+				HasCarrier:    true,
+				IPV4Addresses: []string{"3.4.5.6/24"},
+			},
+		}
+		agent.Status.Conditions = append(agent.Status.Conditions, v1.Condition{Type: aiv1beta1.BoundCondition, Status: "False"})
+		agent.Status.Conditions = append(agent.Status.Conditions, v1.Condition{Type: aiv1beta1.ValidatedCondition, Status: "True"})
+		Expect(c.Create(ctx, agent)).To(BeNil())
+
+		// Create AgentMachine with missing label in Machine
+		agentMachine := newAgentMachine("agentMachine-1", testNamespace, capiproviderv1alpha1.AgentMachineSpec{}, ctx, c, false)
+		Expect(c.Create(ctx, agentMachine)).To(BeNil())
+
+		_, err := amr.Reconcile(ctx, newAgentMachineRequest(agentMachine))
+		Expect(err).To(BeNil())
+
+		Expect(c.Get(ctx, types.NamespacedName{Namespace: testNamespace, Name: "agentMachine-1"}, agentMachine)).To(BeNil())
+		Expect(agentMachine.Status.AgentRef.Name).To(BeEquivalentTo("agent-1"))
+		Expect(len(agentMachine.Status.Addresses)).To(BeEquivalentTo(4))
+		expectedAddresses := []string{"1.2.3.4", "2.3.4.5", "3.4.5.6", "agent1"}
+		expectedTypes := []string{string(clusterv1.MachineExternalIP), string(clusterv1.MachineInternalDNS)}
+		for i := 0; i < len(agentMachine.Status.Addresses); i++ {
+			fmt.Printf("Address: %s, Type: %s", agentMachine.Status.Addresses[i].Address, string(agentMachine.Status.Addresses[i].Type))
+			Expect(funk.ContainsString(expectedAddresses, agentMachine.Status.Addresses[i].Address)).To(BeEquivalentTo(true))
+			Expect(funk.ContainsString(expectedTypes, string(agentMachine.Status.Addresses[i].Type))).To(BeEquivalentTo(true))
+		}
 	})
 
 	It("agentMachine set ignition endpoint", func() {
@@ -342,5 +385,39 @@ var _ = Describe("agentmachine reconcile", func() {
 		result, err := amr.Reconcile(ctx, newAgentMachineRequest(agentMachine))
 		Expect(err).To(BeNil())
 		Expect(result).To(Equal(ctrl.Result{}))
+	})
+
+	It("agentMachine deprovision with no agent", func() {
+		agentMachine := newAgentMachine("agentMachine-1", testNamespace, capiproviderv1alpha1.AgentMachineSpec{}, ctx, c, false)
+		agentMachine.Status.Ready = true
+		agentMachine.ObjectMeta.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+		controllerutil.AddFinalizer(agentMachine, AgentMachineFinalizerName)
+		Expect(c.Create(ctx, agentMachine)).To(BeNil())
+		result, err := amr.Reconcile(ctx, newAgentMachineRequest(agentMachine))
+		Expect(err).To(BeNil())
+		Expect(result).To(Equal(ctrl.Result{}))
+
+		getErr := c.Get(ctx, types.NamespacedName{Namespace: testNamespace, Name: "agentMachine-1"}, agentMachine)
+		Expect(getErr.(*errors.StatusError).Status().Code).To(BeEquivalentTo(404))
+	})
+
+	It("agentMachine deprovision with agent", func() {
+		agent := newAgent("agent-1", testNamespace, aiv1beta1.AgentSpec{Approved: false})
+		agent.Status.Conditions = append(agent.Status.Conditions, v1.Condition{Type: aiv1beta1.BoundCondition, Status: "True"})
+		agent.Status.Conditions = append(agent.Status.Conditions, v1.Condition{Type: aiv1beta1.ValidatedCondition, Status: "True"})
+		Expect(c.Create(ctx, agent)).To(BeNil())
+
+		agentMachine := newAgentMachine("agentMachine-1", testNamespace, capiproviderv1alpha1.AgentMachineSpec{}, ctx, c, false)
+		agentMachine.Status.Ready = true
+		agentMachine.Status.AgentRef = &capiproviderv1alpha1.AgentReference{Namespace: agent.Namespace, Name: agent.Name}
+		agentMachine.ObjectMeta.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+		controllerutil.AddFinalizer(agentMachine, AgentMachineFinalizerName)
+		Expect(c.Create(ctx, agentMachine)).To(BeNil())
+		result, err := amr.Reconcile(ctx, newAgentMachineRequest(agentMachine))
+		Expect(err).To(BeNil())
+		Expect(result).To(Equal(ctrl.Result{}))
+
+		getErr := c.Get(ctx, types.NamespacedName{Namespace: testNamespace, Name: "agentMachine-1"}, agentMachine)
+		Expect(getErr.(*errors.StatusError).Status().Code).To(BeEquivalentTo(404))
 	})
 })
