@@ -80,41 +80,9 @@ func (r *AgentMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	if agentMachine.ObjectMeta.DeletionTimestamp.IsZero() { // AgentMachine not being deleted
-		// Register a finalizer if it is absent.
-		if !funk.ContainsString(agentMachine.GetFinalizers(), AgentMachineFinalizerName) {
-			controllerutil.AddFinalizer(agentMachine, AgentMachineFinalizerName)
-			if err := r.Update(ctx, agentMachine); err != nil {
-				log.WithError(err).Errorf("failed to add finalizer %s to resource %s %s", AgentMachineFinalizerName, agentMachine.Name, agentMachine.Namespace)
-				return ctrl.Result{Requeue: true}, err
-			}
-		}
-	} else { // AgentMachine is being deleted
-		if funk.ContainsString(agentMachine.GetFinalizers(), AgentMachineFinalizerName) {
-			// deletion finalizer found, unbind the Agent from the ClusterDeployment
-			if agentMachine.Status.AgentRef != nil {
-				agent := &aiv1beta1.Agent{}
-				agentRef := types.NamespacedName{Name: agentMachine.Status.AgentRef.Name, Namespace: agentMachine.Status.AgentRef.Namespace}
-				if err := r.Get(ctx, agentRef, agent); err != nil {
-					log.WithError(err).Errorf("Failed to get agent %s", agentRef)
-					return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
-				}
-				agent.Spec.ClusterDeploymentName = nil
-				if err := r.Update(ctx, agent); err != nil {
-					log.WithError(err).Error("failed to update Agent with ClusterDeployment ref")
-					return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
-				}
-			}
-		}
-
-		// remove our finalizer from the list and update it.
-		controllerutil.RemoveFinalizer(agentMachine, AgentMachineFinalizerName)
-		if err := r.Update(ctx, agentMachine); err != nil {
-			log.WithError(err).Errorf("failed to remove finalizer %s from resource %s %s", AgentMachineFinalizerName, agentMachine.Name, agentMachine.Namespace)
-			return ctrl.Result{Requeue: true}, err
-		}
-
-		return ctrl.Result{}, nil
+	res, err := r.handleDeletionFinalizer(ctx, log, agentMachine)
+	if res != nil || err != nil {
+		return *res, err
 	}
 
 	// If the AgentMachine is ready, we have nothing to do
@@ -164,6 +132,50 @@ func (r *AgentMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	// If the AgentMachine has an agent, check its conditions and update ready/error
 	return r.updateAgentStatus(ctx, log, agentMachine, agent)
+}
+
+func (r *AgentMachineReconciler) handleDeletionFinalizer(ctx context.Context, log logrus.FieldLogger, agentMachine *capiproviderv1alpha1.AgentMachine) (*ctrl.Result, error) {
+	if agentMachine.ObjectMeta.DeletionTimestamp.IsZero() { // AgentMachine not being deleted
+		// Register a finalizer if it is absent.
+		if !funk.ContainsString(agentMachine.GetFinalizers(), AgentMachineFinalizerName) {
+			controllerutil.AddFinalizer(agentMachine, AgentMachineFinalizerName)
+			if err := r.Update(ctx, agentMachine); err != nil {
+				log.WithError(err).Errorf("failed to add finalizer %s to resource %s %s", AgentMachineFinalizerName, agentMachine.Name, agentMachine.Namespace)
+				return &ctrl.Result{Requeue: true}, err
+			}
+		}
+	} else { // AgentMachine is being deleted
+		r.Log.Info("Found deletion timestamp on AgentMachine")
+		if funk.ContainsString(agentMachine.GetFinalizers(), AgentMachineFinalizerName) {
+			// deletion finalizer found, unbind the Agent from the ClusterDeployment
+			if agentMachine.Status.AgentRef != nil {
+				r.Log.Info("Removing ClusterDeployment ref to unbind Agent")
+				agent := &aiv1beta1.Agent{}
+				agentRef := types.NamespacedName{Name: agentMachine.Status.AgentRef.Name, Namespace: agentMachine.Status.AgentRef.Namespace}
+				if err := r.Get(ctx, agentRef, agent); err != nil {
+					log.WithError(err).Errorf("Failed to get agent %s", agentRef)
+					return &ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
+				}
+				agent.Spec.ClusterDeploymentName = nil
+				if err := r.Update(ctx, agent); err != nil {
+					log.WithError(err).Error("failed to remove the Agent's ClusterDeployment ref")
+					return &ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
+				}
+			}
+
+			// remove our finalizer from the list and update it.
+			controllerutil.RemoveFinalizer(agentMachine, AgentMachineFinalizerName)
+			if err := r.Update(ctx, agentMachine); err != nil {
+				log.WithError(err).Errorf("failed to remove finalizer %s from resource %s %s", AgentMachineFinalizerName, agentMachine.Name, agentMachine.Namespace)
+				return &ctrl.Result{Requeue: true}, err
+			}
+		}
+		r.Log.Info("AgentMachine is ready for deletion")
+
+		return &ctrl.Result{}, nil
+	}
+
+	return nil, nil
 }
 
 func (r *AgentMachineReconciler) findAgent(ctx context.Context, log logrus.FieldLogger, agentMachine *capiproviderv1alpha1.AgentMachine) (ctrl.Result, error) {
