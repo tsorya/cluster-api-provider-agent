@@ -34,7 +34,7 @@ type AgentMachineSpec struct {
 
 	// The labels that must be set on an Agent in order to be selected for this Machine
 	// +optional
-	AgentLabelSelector metav1.LabelSelector `json:"agentLabelSelector,omitempty"`
+	AgentLabelSelector *metav1.LabelSelector `json:"agentLabelSelector,omitempty"`
 
 	// ProviderID is the host's motherboard serial formatted as
 	// agent://12345678-1234-1234-1234-123456789abc

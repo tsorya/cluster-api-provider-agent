@@ -29,6 +29,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/thoas/go-funk"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
@@ -179,20 +181,34 @@ func (r *AgentMachineReconciler) handleDeletionFinalizer(ctx context.Context, lo
 }
 
 func (r *AgentMachineReconciler) findAgent(ctx context.Context, log logrus.FieldLogger, agentMachine *capiproviderv1alpha1.AgentMachine) (ctrl.Result, error) {
+	var selector labels.Selector
+	if agentMachine.Spec.AgentLabelSelector != nil {
+		var err error
+		selector, err = metav1.LabelSelectorAsSelector(agentMachine.Spec.AgentLabelSelector)
+		if err != nil {
+			log.WithError(err).Error("failed to convert label selector to selector")
+			return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
+		}
+	} else {
+		selector = labels.Everything()
+	}
+
 	agents := &aiv1beta1.AgentList{}
-	if err := r.List(ctx, agents); err != nil {
+	if err := r.List(ctx, agents, &client.ListOptions{LabelSelector: selector}); err != nil {
+		log.WithError(err).Error("failed to list agents")
 		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
 	}
 
 	agentMachines := &capiproviderv1alpha1.AgentMachineList{}
 	if err := r.List(ctx, agentMachines); err != nil {
+		log.WithError(err).Error("failed to list agent machines")
 		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
 	}
 	var foundAgent *aiv1beta1.Agent
 
 	// Find an agent that is unbound and whose validations pass
 	for i := 0; i < len(agents.Items) && foundAgent == nil; i++ {
-		if isValidAgent(&agents.Items[i], agentMachines) {
+		if isValidAgent(&agents.Items[i], agentMachine, agentMachines) {
 			foundAgent = &agents.Items[i]
 		}
 	}
@@ -281,7 +297,7 @@ func (r *AgentMachineReconciler) setAgentIgnitionEndpoint(ctx context.Context, l
 	return true, nil
 }
 
-func isValidAgent(agent *aiv1beta1.Agent, agentMachines *capiproviderv1alpha1.AgentMachineList) bool {
+func isValidAgent(agent *aiv1beta1.Agent, agentMachine *capiproviderv1alpha1.AgentMachine, agentMachines *capiproviderv1alpha1.AgentMachineList) bool {
 	if !agent.Spec.Approved {
 		return false
 	}
@@ -292,6 +308,13 @@ func isValidAgent(agent *aiv1beta1.Agent, agentMachines *capiproviderv1alpha1.Ag
 		if condition.Type == aiv1beta1.ValidatedCondition && condition.Status != "True" {
 			return false
 		}
+	}
+
+	if agent.Status.Inventory.Cpu.Count < int64(agentMachine.Spec.MinCPUs) {
+		return false
+	}
+	if int(agent.Status.Inventory.Memory.PhysicalBytes/1024/1024) < int(agentMachine.Spec.MinMemoryMiB) {
+		return false
 	}
 
 	// Make sure no other AgentMachine took this Agent already
