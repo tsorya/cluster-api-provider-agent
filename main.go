@@ -98,6 +98,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err = (&controllers.NodeProviderIDReconciler{
+		Client:              mgr.GetClient(),
+		Scheme:              mgr.GetScheme(),
+		Log:                 logger,
+		RemoteClientHandler: controllers.NewRemoteClient(mgr.GetClient(), mgr.GetScheme()),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "NodeProviderID")
+		os.Exit(1)
+	}
+
 	//+kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

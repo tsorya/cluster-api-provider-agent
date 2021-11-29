@@ -19,6 +19,7 @@ require (
 	github.com/openshift/assisted-service v1.0.10-0.20211109061024-9495cf973725
 	github.com/openshift/custom-resource-status v1.1.0
 	github.com/openshift/hive/apis v0.0.0-20211012200111-a691d6f21d9e
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/sirupsen/logrus v1.8.1
 	github.com/thoas/go-funk v0.8.0
 	k8s.io/api v0.22.3
