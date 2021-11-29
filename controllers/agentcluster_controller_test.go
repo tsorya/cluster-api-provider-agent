@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 
 	capiproviderv1alpha1 "github.com/eranco74/cluster-api-provider-agent/api/v1alpha1"
 	"github.com/golang/mock/gomock"
@@ -203,8 +204,9 @@ var _ = Describe("agentcluster reconcile", func() {
 			PullSecretRef: &corev1.LocalObjectReference{
 				Name: pullSecretName,
 			},
-			ReleaseImage:     "release-image",
-			IgnitionEndpoint: &capiproviderv1alpha1.IgnitionEndpoint{Url: "https://1.2.3.4:555/ignition"},
+			ControlPlaneEndpoint: clusterv1.APIEndpoint{Host: "kube-apiserver", Port: 6443},
+			ReleaseImage:         "release-image",
+			IgnitionEndpoint:     &capiproviderv1alpha1.IgnitionEndpoint{Url: "https://1.2.3.4:555/ignition"},
 		})
 
 		agentCluster.Status.ClusterDeploymentRef.Name = agentCluster.Name
@@ -234,8 +236,9 @@ var _ = Describe("agentcluster reconcile", func() {
 			PullSecretRef: &corev1.LocalObjectReference{
 				Name: pullSecretName,
 			},
-			ReleaseImage:     "right-release-image",
-			IgnitionEndpoint: &capiproviderv1alpha1.IgnitionEndpoint{Url: "https://1.2.3.4:555/ignition"},
+			ControlPlaneEndpoint: clusterv1.APIEndpoint{Host: "kube-apiserver", Port: 6443},
+			ReleaseImage:         "right-release-image",
+			IgnitionEndpoint:     &capiproviderv1alpha1.IgnitionEndpoint{Url: "https://1.2.3.4:555/ignition"},
 		})
 
 		agentCluster.Status.ClusterDeploymentRef.Name = agentCluster.Name
@@ -287,6 +290,37 @@ var _ = Describe("agentcluster reconcile", func() {
 		Expect(result).To(Equal(ctrl.Result{Requeue: true}))
 
 		validateAllRefs(c, ctx, agentCluster.Name, testNamespace, CISreleaseImage)
+	})
+	It("agentCluster missing controlPlaneEndpoint", func() {
+		domain := "test-domain.com"
+		clusterName := "test-cluster-name"
+		pullSecretName := "test-pull-secret-name"
+		agentCluster := newAgentCluster("agentCluster-1", testNamespace, capiproviderv1alpha1.AgentClusterSpec{
+			BaseDomain:  domain,
+			ClusterName: clusterName,
+			PullSecretRef: &corev1.LocalObjectReference{
+				Name: pullSecretName,
+			},
+			ReleaseImage:     "right-release-image",
+			IgnitionEndpoint: &capiproviderv1alpha1.IgnitionEndpoint{Url: "https://1.2.3.4:555/ignition"},
+		})
+
+		agentCluster.Status.ClusterDeploymentRef.Name = agentCluster.Name
+		agentCluster.Status.ClusterDeploymentRef.Namespace = agentCluster.Namespace
+		Expect(c.Create(ctx, agentCluster)).To(BeNil())
+
+		createAgentClusterInstall(c, ctx, agentCluster.Namespace, agentCluster.Name, &hivev1.ClusterImageSetReference{Name: agentCluster.Name})
+		createClusterImageSet(c, ctx, agentCluster.Name, "right-release-image")
+		createClusterDeployment(c, ctx, agentCluster, &hivev1.ClusterInstallLocalReference{
+			Kind:    "AgentClusterInstall",
+			Group:   hiveext.Group,
+			Version: hiveext.Version,
+			Name:    agentCluster.Name,
+		})
+
+		result, err := acr.Reconcile(ctx, newAgentClusterRequest(agentCluster))
+		Expect(err).To(BeNil())
+		Expect(result).To(Equal(ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}))
 	})
 })
 

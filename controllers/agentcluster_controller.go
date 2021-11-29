@@ -83,7 +83,10 @@ func (r *AgentClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	if err != nil {
 		return result, err
 	}
-
+	if !agentCluster.Spec.ControlPlaneEndpoint.IsValid() {
+		log.Info("Waiting for agentCluster controlPlaneEndpoint")
+		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, nil
+	}
 	// If the agentCluster has references a ClusterDeployment, sync from its status
 	return r.updateClusterStatus(ctx, log, agentCluster)
 }
