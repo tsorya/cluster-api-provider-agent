@@ -3,14 +3,6 @@ Kubernetes-native declarative infrastructure for agent-based installation.
 
 cluster-api-provider-agent serves as infrastructure provider for [Kubernetes cluster-api](https://github.com/kubernetes-sigs/cluster-api)
 
-## Deploying the cluster-api-provider-agent provider
-In order for your clusterctl to be aware of this provider, you need to update the clusterctl config located at "$HOME/.cluster-api/clusterctl.yaml" with the following field:\
-providers:\
-  &nbsp; \- name: "agent" \
-    &nbsp;&nbsp;&nbsp;&nbsp;url: "https://github.com/eranco74/cluster-api-provider-agent/releases/latest/infrastructure-components.yaml" \
-    &nbsp;&nbsp;&nbsp;&nbsp;type: "InfrastructureProvider"\
-After adding that field to the config, you should run "clusterctl init --infrastructure agent" to set up the provider.
-
 ## How to install cluster-api-provider-agent
 
 cluster-api-provider-agent is deployed into an existing OpenShift / Kubernetes cluster.
@@ -18,6 +10,20 @@ cluster-api-provider-agent is deployed into an existing OpenShift / Kubernetes c
 **Prerequisites:**
 * Admin access to the OpenShift / Kubernetes cluster specified by the KUBECONFIG environment variable
 
+### Installing with [clusterctl](https://cluster-api.sigs.k8s.io/clusterctl/overview.html)
+Add the agent provider to [clusterctl configuration file](https://cluster-api.sigs.k8s.io/clusterctl/configuration.html) (located at `$HOME/.cluster-api/clusterctl.yaml`).
+```yaml
+providers:
+  - name: "agent"
+    url: "https://github.com/eranco74/cluster-api-provider-agent/releases/latest/infrastructure-components.yaml"
+    type: "InfrastructureProvider"
+```
+Set up the provider:
+```shell
+clusterctl init --infrastructure agent
+```
+
+### Installing from source
 Build the cluster-api-provider-agent image and push it to a container image repository:
 ```shell
 make docker-build docker-push IMG=<your docker repository>:`git log -1 --short`
