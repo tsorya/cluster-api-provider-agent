@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"github.com/openshift/hive/apis/hive/v1/agent"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 
 	capiproviderv1alpha1 "github.com/eranco74/cluster-api-provider-agent/api/v1alpha1"
@@ -367,6 +368,9 @@ func createClusterDeployment(c client.Client, ctx context.Context, agentCluster 
 			ClusterName:       agentCluster.Spec.ClusterName,
 			PullSecretRef:     agentCluster.Spec.PullSecretRef,
 			ClusterInstallRef: ClusterInstallRef,
+			Platform: hivev1.Platform{
+				AgentBareMetal: &agent.BareMetalPlatform{},
+			},
 		},
 	}
 	Expect(c.Create(ctx, clusterDeployment)).To(BeNil())

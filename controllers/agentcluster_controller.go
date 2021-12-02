@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"github.com/openshift/hive/apis/hive/v1/agent"
 	"strings"
 
 	capiproviderv1alpha1 "github.com/eranco74/cluster-api-provider-agent/api/v1alpha1"
@@ -178,7 +179,11 @@ func (r *AgentClusterReconciler) createClusterDeployment(ctx context.Context, lo
 			Installed:     true,
 			BaseDomain:    agentCluster.Spec.BaseDomain,
 			ClusterName:   agentCluster.Spec.ClusterName,
-			PullSecretRef: agentCluster.Spec.PullSecretRef},
+			PullSecretRef: agentCluster.Spec.PullSecretRef,
+			Platform: hivev1.Platform{
+				AgentBareMetal: &agent.BareMetalPlatform{},
+			},
+		},
 	}
 	agentCluster.Status.ClusterDeploymentRef.Name = clusterDeployment.Name
 	agentCluster.Status.ClusterDeploymentRef.Namespace = clusterDeployment.Namespace

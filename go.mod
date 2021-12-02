@@ -12,14 +12,14 @@ replace sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.0.0
 require (
 	github.com/coreos/ignition/v2 v2.9.0
 	github.com/eranco74/cluster-api-provider-agent/api v0.0.0
-	github.com/go-openapi/swag v0.19.14
+	github.com/go-openapi/swag v0.19.15
 	github.com/golang/mock v1.6.0
 	github.com/onsi/ginkgo v1.16.4
 	github.com/onsi/gomega v1.16.0
-	github.com/openshift/assisted-service v1.0.10-0.20211109061024-9495cf973725
+	github.com/openshift/assisted-service v1.0.10-0.20211202003107-1439a827f959
 	github.com/openshift/custom-resource-status v1.1.0
 	github.com/openshift/hive/apis v0.0.0-20211012200111-a691d6f21d9e
-	github.com/pkg/errors v0.9.1 // indirect
+	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.8.1
 	github.com/thoas/go-funk v0.8.0
 	k8s.io/api v0.22.3
