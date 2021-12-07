@@ -51,7 +51,7 @@ func (r *remoteClient) GetRemoteClient(ctx context.Context, secretNamespace stri
 	}
 	kubeconfigData, ok := secret.Data["kubeconfig"]
 	if !ok || len(kubeconfigData) == 0 {
-		return nil, errors.Errorf("Secret data for %s/%s  does not contain kubeconfig", secret.Namespace, secret.Name)
+		return nil, errors.Errorf("Secret data for %s/%s  does not contain kubeconfig", secretKey.Namespace, secretKey.Name)
 	}
 	clientConfig, err := clientcmd.NewClientConfigFromBytes(kubeconfigData)
 	if err != nil {
