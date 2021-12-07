@@ -25,7 +25,7 @@ jobs:
       - name: Get short sha
         id: vars
         run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
-      - name: Publish image to registry
+      - name: Publish PR image to registry
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         uses: elgohr/Publish-Docker-Github-Action@2.15
         env:
@@ -38,7 +38,7 @@ jobs:
           buildargs: QUAY_TAG_EXPIRATION
           dockerfile: Dockerfile
           tags: "${{ steps.vars.outputs.sha_short }}"
-      - name: Publish image to registry
+      - name: Publish latest image to registry
         # Publish the image with latest tag only in case of push to master
         if: github.event_name != 'pull_request'
         uses: elgohr/Publish-Docker-Github-Action@2.15
