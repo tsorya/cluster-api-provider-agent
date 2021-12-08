@@ -202,7 +202,13 @@ var _ = Describe("agentmachine reconcile", func() {
 		agentMachine := newAgentMachine("agentMachine-1", testNamespace, capiproviderv1alpha1.AgentMachineSpec{}, ctx, c, true)
 		Expect(c.Create(ctx, agentMachine)).To(BeNil())
 
+		// Find Agent
 		result, err := amr.Reconcile(ctx, newAgentMachineRequest(agentMachine))
+		Expect(err).To(BeNil())
+		Expect(result).To(Equal(ctrl.Result{Requeue: true}))
+
+		// Try and fail to get Machine
+		result, err = amr.Reconcile(ctx, newAgentMachineRequest(agentMachine))
 		Expect(err).To(BeNil())
 		Expect(result).To(Equal(ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}))
 
@@ -323,7 +329,13 @@ var _ = Describe("agentmachine reconcile", func() {
 		machine.Spec.Bootstrap.DataSecretName = &secret.ObjectMeta.Name
 		c.Update(ctx, machine)
 
+		// Set Agent
 		result, err := amr.Reconcile(ctx, newAgentMachineRequest(agentMachine))
+		Expect(err).To(BeNil())
+		Expect(result).To(Equal(ctrl.Result{Requeue: true}))
+
+		// Set ignition
+		result, err = amr.Reconcile(ctx, newAgentMachineRequest(agentMachine))
 		Expect(err).To(BeNil())
 		Expect(result).To(Equal(ctrl.Result{Requeue: true}))
 
@@ -351,13 +363,20 @@ var _ = Describe("agentmachine reconcile", func() {
 
 		agentMachine := newAgentMachine("agentMachine-4", testNamespace, capiproviderv1alpha1.AgentMachineSpec{}, ctx, c, false)
 		Expect(c.Create(ctx, agentMachine)).To(BeNil())
+		agentMachineRequest := newAgentMachineRequest(agentMachine)
 
-		result, err := amr.Reconcile(ctx, newAgentMachineRequest(agentMachine))
+		// find agent
+		result, err := amr.Reconcile(ctx, agentMachineRequest)
 		Expect(err).To(BeNil())
 		Expect(result).To(Equal(ctrl.Result{Requeue: true}))
 
 		Expect(c.Get(ctx, types.NamespacedName{Namespace: testNamespace, Name: "agentMachine-4"}, agentMachine)).To(BeNil())
 		Expect(agentMachine.Status.AgentRef.Name).To(BeEquivalentTo("agent-4"))
+
+		// set clusterdeployment
+		result, err = amr.Reconcile(ctx, agentMachineRequest)
+		Expect(err).To(BeNil())
+		Expect(result).To(Equal(ctrl.Result{Requeue: true}))
 
 		agent := &aiv1beta1.Agent{}
 		Expect(c.Get(ctx, types.NamespacedName{Namespace: testNamespace, Name: "agent-4"}, agent)).To(BeNil())
@@ -375,6 +394,7 @@ var _ = Describe("agentmachine reconcile", func() {
 		}
 		agentMachine := newAgentMachine("agentMachine", testNamespace, spec, ctx, c, false)
 		Expect(c.Create(ctx, agentMachine)).To(BeNil())
+		agentMachineRequest := newAgentMachineRequest(agentMachine)
 
 		goodLabels := map[string]string{"location": "datacenter2", "hasGpu": "true"}
 		Expect(c.Create(ctx, newAgentWithProperties("agent-0", testNamespace, true, false, true, 8, 128, goodLabels))).To(BeNil()) // Agent0: insufficient cores
@@ -392,12 +412,18 @@ var _ = Describe("agentmachine reconcile", func() {
 		Expect(c.Create(ctx, newAgentWithProperties("agent-7", testNamespace, true, false, true, 32, 128, badLabels5))).To(BeNil()) // Agent7: bad labels
 		Expect(c.Create(ctx, newAgentWithProperties("agent-8", testNamespace, true, false, true, 32, 128, goodLabels))).To(BeNil()) // Agent8: the chosen one
 
-		result, err := amr.Reconcile(ctx, newAgentMachineRequest(agentMachine))
+		// find agent
+		result, err := amr.Reconcile(ctx, agentMachineRequest)
 		Expect(err).To(BeNil())
 		Expect(result).To(Equal(ctrl.Result{Requeue: true}))
 
 		Expect(c.Get(ctx, types.NamespacedName{Namespace: testNamespace, Name: "agentMachine"}, agentMachine)).To(BeNil())
 		Expect(agentMachine.Status.AgentRef.Name).To(BeEquivalentTo("agent-8"))
+
+		// set clusterdeployment
+		result, err = amr.Reconcile(ctx, agentMachineRequest)
+		Expect(err).To(BeNil())
+		Expect(result).To(Equal(ctrl.Result{Requeue: true}))
 
 		agent := &aiv1beta1.Agent{}
 		Expect(c.Get(ctx, types.NamespacedName{Namespace: testNamespace, Name: "agent-8"}, agent)).To(BeNil())

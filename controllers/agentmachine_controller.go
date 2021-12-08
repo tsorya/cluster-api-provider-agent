@@ -94,19 +94,7 @@ func (r *AgentMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	// If the AgentMachine doesn't have an agent, find one and set the agentRef
 	if agentMachine.Status.AgentRef == nil {
-		res, err := r.findAgent(ctx, log, agentMachine)
-		if err != nil {
-			return res, err
-		}
-		if res.Requeue {
-			return res, nil
-		}
-
-		// Get AgentMachine with updated status
-		if err := r.Get(ctx, req.NamespacedName, agentMachine); err != nil {
-			log.WithError(err).Errorf("Failed to get agentMachine %s", req.NamespacedName)
-			return ctrl.Result{}, client.IgnoreNotFound(err)
-		}
+		return r.findAgent(ctx, log, agentMachine)
 	}
 
 	agent := &aiv1beta1.Agent{}
@@ -125,16 +113,8 @@ func (r *AgentMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, nil
 	}
 
-	agentUpdated, err := r.setAgentIgnitionEndpoint(ctx, log, agent, agentMachine, machine)
-	if err != nil {
-		log.WithError(err).Error("failed setting ignition endpoint")
-		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
-	}
-	if agentUpdated {
-		if err := r.Get(ctx, agentRef, agent); err != nil {
-			log.WithError(err).Errorf("Failed to get agent %s", agentRef)
-			return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
-		}
+	if machine.Spec.Bootstrap.DataSecretName != nil && agent.Spec.MachineConfigPool == "" {
+		return r.setAgentIgnitionEndpoint(ctx, log, agent, agentMachine, machine)
 	}
 
 	// If the AgentMachine has an Agent but the Agent doesn't reference the ClusterDeployment,
@@ -247,34 +227,29 @@ func (r *AgentMachineReconciler) findAgent(ctx context.Context, log logrus.Field
 		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
 	}
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{Requeue: true}, nil
 }
 
-func (r *AgentMachineReconciler) setAgentIgnitionEndpoint(ctx context.Context, log logrus.FieldLogger, agent *aiv1beta1.Agent, agentMachine *capiproviderv1alpha1.AgentMachine, machine *clusterv1.Machine) (bool, error) {
+func (r *AgentMachineReconciler) setAgentIgnitionEndpoint(ctx context.Context, log logrus.FieldLogger, agent *aiv1beta1.Agent, agentMachine *capiproviderv1alpha1.AgentMachine, machine *clusterv1.Machine) (ctrl.Result, error) {
 	log.Debug("Setting Ignition endpoint info")
 	updateAgent := false
-
-	if machine.Spec.Bootstrap.DataSecretName == nil {
-		log.Info("No DataSecretName set, not setting ignition endpoint token")
-		return false, nil
-	}
 
 	secret := &corev1.Secret{}
 	secretRef := types.NamespacedName{Namespace: machine.Namespace, Name: *machine.Spec.Bootstrap.DataSecretName}
 	if err := r.Get(ctx, secretRef, secret); err != nil {
 		log.WithError(err).Errorf("Failed to get user-data secret %s", *machine.Spec.Bootstrap.DataSecretName)
-		return false, err
+		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
 	}
 
 	ignitionConfig := &ignitionapi.Config{}
 	if err := json.Unmarshal(secret.Data["value"], ignitionConfig); err != nil {
 		log.WithError(err).Errorf("Failed to unmarshal user-data secret %s", *machine.Spec.Bootstrap.DataSecretName)
-		return false, err
+		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
 	}
 
 	if len(ignitionConfig.Ignition.Config.Merge) != 1 {
 		log.Errorf("expected one ignition source in secret %s but found %d", *machine.Spec.Bootstrap.DataSecretName, len(ignitionConfig.Ignition.Config.Merge))
-		return false, errors.New("did not find one ignition source as expected")
+		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, errors.New("did not find one ignition source as expected")
 	}
 
 	ignitionSource := ignitionConfig.Ignition.Config.Merge[0]
@@ -292,7 +267,7 @@ func (r *AgentMachineReconciler) setAgentIgnitionEndpoint(ctx context.Context, l
 		expectedPrefix := "Bearer "
 		if !strings.HasPrefix(*header.Value, expectedPrefix) {
 			log.Errorf("did not find expected prefix for bearer token in user-data secret %s", *machine.Spec.Bootstrap.DataSecretName)
-			return false, errors.New("did not find expected prefix for bearer token")
+			return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, errors.New("did not find expected prefix for bearer token")
 		}
 		token := (*header.Value)[len(expectedPrefix):]
 		if agent.Spec.IgnitionEndpointToken != token {
@@ -304,11 +279,11 @@ func (r *AgentMachineReconciler) setAgentIgnitionEndpoint(ctx context.Context, l
 	if updateAgent {
 		if agentUpdateErr := r.Update(ctx, agent); agentUpdateErr != nil {
 			log.WithError(agentUpdateErr).Error("failed to update Agent with ignition endpoint")
-			return false, agentUpdateErr
+			return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, agentUpdateErr
 		}
 		log.Info("Successfully updated Ignition endpoint token and MachineConfigPool")
 	}
-	return true, nil
+	return ctrl.Result{Requeue: true}, nil
 }
 
 func isValidAgent(agent *aiv1beta1.Agent, agentMachine *capiproviderv1alpha1.AgentMachine, agentMachines *capiproviderv1alpha1.AgentMachineList) bool {
