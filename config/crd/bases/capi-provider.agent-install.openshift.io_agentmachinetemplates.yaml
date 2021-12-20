@@ -50,8 +50,8 @@ spec:
                       of the machine.
                     properties:
                       agentLabelSelector:
-                        description: The labels that must be set on an Agent in order
-                          to be selected for this Machine
+                        description: AgentLabelSelector contains the labels that must
+                          be set on an Agent in order to be selected for this Machine.
                         properties:
                           matchExpressions:
                             description: matchExpressions is a list of label selector
@@ -96,13 +96,13 @@ spec:
                             type: object
                         type: object
                       minCPUs:
-                        description: The minimum number of CPU cores that this Machine
-                          requires
+                        description: MinCPUs specifies the minimum number of CPU cores
+                          that this Machine requires.
                         format: int32
                         type: integer
                       minMemoryMiB:
-                        description: The minimum amount of RAM that this Machine requires,
-                          in MiB
+                        description: MinMemoryMiB specifies the minimum amount of
+                          RAM that this Machine requires, in MiB.
                         format: int32
                         type: integer
                       providerID:
