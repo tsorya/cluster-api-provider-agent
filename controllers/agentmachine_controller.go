@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"strings"
 	"time"
 
@@ -147,14 +148,20 @@ func (r *AgentMachineReconciler) handleDeletionFinalizer(ctx context.Context, lo
 				r.Log.Info("Removing ClusterDeployment ref to unbind Agent")
 				agent := &aiv1beta1.Agent{}
 				agentRef := types.NamespacedName{Name: agentMachine.Status.AgentRef.Name, Namespace: agentMachine.Status.AgentRef.Namespace}
-				if err := r.Get(ctx, agentRef, agent); err != nil {
-					log.WithError(err).Errorf("Failed to get agent %s", agentRef)
-					return &ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
-				}
-				agent.Spec.ClusterDeploymentName = nil
-				if err := r.Update(ctx, agent); err != nil {
-					log.WithError(err).Error("failed to remove the Agent's ClusterDeployment ref")
-					return &ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
+				err := r.Get(ctx, agentRef, agent)
+				if err != nil {
+					if apierrors.IsNotFound(err) {
+						log.WithError(err).Infof("Failed to get agent %s. assuming the agent no longer exists", agentRef)
+						} else {
+						log.WithError(err).Errorf("Failed to get agent %s", agentRef)
+						return &ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
+					}
+				} else {
+					agent.Spec.ClusterDeploymentName = nil
+					if err := r.Update(ctx, agent); err != nil {
+						log.WithError(err).Error("failed to remove the Agent's ClusterDeployment ref")
+						return &ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
+					}
 				}
 			}
 

@@ -451,7 +451,7 @@ var _ = Describe("agentmachine reconcile", func() {
 		Expect(result).To(Equal(ctrl.Result{}))
 	})
 
-	It("agentMachine deprovision with no agent", func() {
+	It("agentMachine deprovision with no agentRef", func() {
 		agentMachine := newAgentMachine("agentMachine-1", testNamespace, capiproviderv1alpha1.AgentMachineSpec{}, ctx, c, false)
 		agentMachine.Status.Ready = true
 		agentMachine.ObjectMeta.DeletionTimestamp = &metav1.Time{Time: time.Now()}
@@ -465,7 +465,7 @@ var _ = Describe("agentmachine reconcile", func() {
 		Expect(getErr.(*errors.StatusError).Status().Code).To(BeEquivalentTo(404))
 	})
 
-	It("agentMachine deprovision with agent", func() {
+	It("agentMachine deprovision with agentRef", func() {
 		agent := newAgent("agent-1", testNamespace, aiv1beta1.AgentSpec{Approved: false})
 		agent.Status.Conditions = append(agent.Status.Conditions, v1.Condition{Type: aiv1beta1.BoundCondition, Status: "True"})
 		agent.Status.Conditions = append(agent.Status.Conditions, v1.Condition{Type: aiv1beta1.ValidatedCondition, Status: "True"})
@@ -474,6 +474,20 @@ var _ = Describe("agentmachine reconcile", func() {
 		agentMachine := newAgentMachine("agentMachine-1", testNamespace, capiproviderv1alpha1.AgentMachineSpec{}, ctx, c, false)
 		agentMachine.Status.Ready = true
 		agentMachine.Status.AgentRef = &capiproviderv1alpha1.AgentReference{Namespace: agent.Namespace, Name: agent.Name}
+		agentMachine.ObjectMeta.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+		controllerutil.AddFinalizer(agentMachine, AgentMachineFinalizerName)
+		Expect(c.Create(ctx, agentMachine)).To(BeNil())
+		result, err := amr.Reconcile(ctx, newAgentMachineRequest(agentMachine))
+		Expect(err).To(BeNil())
+		Expect(result).To(Equal(ctrl.Result{}))
+
+		getErr := c.Get(ctx, types.NamespacedName{Namespace: testNamespace, Name: "agentMachine-1"}, agentMachine)
+		Expect(getErr.(*errors.StatusError).Status().Code).To(BeEquivalentTo(404))
+	})
+	It("agentMachine deprovision with agentRef and no agent", func() {
+		agentMachine := newAgentMachine("agentMachine-1", testNamespace, capiproviderv1alpha1.AgentMachineSpec{}, ctx, c, false)
+		agentMachine.Status.Ready = true
+		agentMachine.Status.AgentRef = &capiproviderv1alpha1.AgentReference{Namespace: testNamespace, Name: "missingAgent"}
 		agentMachine.ObjectMeta.DeletionTimestamp = &metav1.Time{Time: time.Now()}
 		controllerutil.AddFinalizer(agentMachine, AgentMachineFinalizerName)
 		Expect(c.Create(ctx, agentMachine)).To(BeNil())
