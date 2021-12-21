@@ -46,6 +46,7 @@ import (
 const (
 	defaultRequeueAfterOnError                 = 10 * time.Second
 	defaultRequeueWaitingForAgentToBeInstalled = 20 * time.Second
+	defaultRequeueWaitingForAvailableAgent      = 30 * time.Second
 	AgentMachineFinalizerName                  = "agentmachine." + aiv1beta1.Group + "/deprovision"
 )
 
@@ -207,7 +208,7 @@ func (r *AgentMachineReconciler) findAgent(ctx context.Context, log logrus.Field
 
 	if foundAgent == nil {
 		log.Info("Did not find any available Agents")
-		return ctrl.Result{Requeue: true}, nil
+		return ctrl.Result{RequeueAfter: defaultRequeueWaitingForAvailableAgent}, nil
 	}
 
 	log.Infof("Found agent to associate with AgentMachine: %s/%s", foundAgent.Namespace, foundAgent.Name)
