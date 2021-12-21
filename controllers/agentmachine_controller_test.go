@@ -189,7 +189,7 @@ var _ = Describe("agentmachine reconcile", func() {
 
 		result, err := amr.Reconcile(ctx, newAgentMachineRequest(agentMachine))
 		Expect(err).To(BeNil())
-		Expect(result).To(Equal(ctrl.Result{Requeue: true}))
+		Expect(result).To(Equal(ctrl.Result{RequeueAfter: defaultRequeueWaitingForAvailableAgent}))
 	})
 
 	It("agentMachine set clusterref later", func() {
