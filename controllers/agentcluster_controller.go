@@ -219,7 +219,12 @@ func (r *AgentClusterReconciler) SetAgentClusterInstallRef(ctx context.Context, 
 		Version: hiveext.Version,
 		Name:    clusterDeployment.Name,
 	}
-	r.Update(ctx, clusterDeployment)
+
+	if err := r.Update(ctx, clusterDeployment); err != nil {
+		log.WithError(err).Error("Failed to update ClusterInstallRef on clusterDeployment")
+		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
+
+	}
 	return ctrl.Result{Requeue: true}, nil
 }
 

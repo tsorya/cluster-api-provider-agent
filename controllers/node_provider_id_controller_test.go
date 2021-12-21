@@ -52,10 +52,6 @@ func getAgentAddresses(internalDNS string) []clusterv1.MachineAddress {
 	return addresses
 }
 
-func getNode(nodeName string) corev1.Node {
-	return corev1.Node{}
-}
-
 var _ = Describe("node providerID reconcile", func() {
 	var (
 		c                       client.Client
@@ -101,7 +97,8 @@ var _ = Describe("node providerID reconcile", func() {
 		// create the node with a name that match the InternalDNS of the agentMachine
 		node := corev1.Node{}
 		node.Name = nodeName
-		rc.Create(ctx, &node)
+		err := rc.Create(ctx, &node)
+		Expect(err).To(BeNil())
 		result, err := npid.Reconcile(ctx, newAgentMachineRequest(agentMachine))
 		Expect(err).To(BeNil())
 		Expect(result).To(Equal(ctrl.Result{}))
@@ -121,7 +118,8 @@ var _ = Describe("node providerID reconcile", func() {
 		node := corev1.Node{}
 		node.Name = nodeName
 		node.Spec.ProviderID = providerID
-		rc.Create(ctx, &node)
+		err := rc.Create(ctx, &node)
+		Expect(err).To(BeNil())
 		result, err := npid.Reconcile(ctx, newAgentMachineRequest(agentMachine))
 		Expect(err).To(BeNil())
 		Expect(result).To(Equal(ctrl.Result{}))
@@ -141,7 +139,8 @@ var _ = Describe("node providerID reconcile", func() {
 		// create the node with a name that match the InternalDNS of the agentMachine
 		node := corev1.Node{}
 		node.Name = nodeName
-		rc.Create(ctx, &node)
+		err := rc.Create(ctx, &node)
+		Expect(err).To(BeNil())
 		result, err := npid.Reconcile(ctx, newAgentMachineRequest(agentMachine))
 		Expect(err).To(BeNil())
 		Expect(result).To(Equal(ctrl.Result{RequeueAfter: defaultRequeue}))
@@ -183,7 +182,8 @@ var _ = Describe("node providerID reconcile", func() {
 		node.Name = nodeName
 		differentProviderID := "different://providerID"
 		node.Spec.ProviderID = differentProviderID
-		rc.Create(ctx, &node)
+		err := rc.Create(ctx, &node)
+		Expect(err).To(BeNil())
 		result, err := npid.Reconcile(ctx, newAgentMachineRequest(agentMachine))
 		Expect(err).To(BeNil())
 		Expect(result).To(Equal(ctrl.Result{RequeueAfter: defaultRequeue}))
