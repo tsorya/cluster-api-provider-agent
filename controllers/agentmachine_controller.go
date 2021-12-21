@@ -47,7 +47,7 @@ import (
 const (
 	defaultRequeueAfterOnError                 = 10 * time.Second
 	defaultRequeueWaitingForAgentToBeInstalled = 20 * time.Second
-	defaultRequeueWaitingForAvailableAgent      = 30 * time.Second
+	defaultRequeueWaitingForAvailableAgent     = 30 * time.Second
 	AgentMachineFinalizerName                  = "agentmachine." + aiv1beta1.Group + "/deprovision"
 )
 
@@ -152,7 +152,7 @@ func (r *AgentMachineReconciler) handleDeletionFinalizer(ctx context.Context, lo
 				if err != nil {
 					if apierrors.IsNotFound(err) {
 						log.WithError(err).Infof("Failed to get agent %s. assuming the agent no longer exists", agentRef)
-						} else {
+					} else {
 						log.WithError(err).Errorf("Failed to get agent %s", agentRef)
 						return &ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
 					}

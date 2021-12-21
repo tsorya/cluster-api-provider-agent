@@ -45,7 +45,9 @@ func (r *remoteClient) GetRemoteClient(ctx context.Context, secretNamespace stri
 		Name:      "admin-kubeconfig",
 	}
 	secret := corev1.Secret{}
-	r.localClient.Get(ctx, secretKey, &secret)
+	if err := r.localClient.Get(ctx, secretKey, &secret); err != nil{
+		return nil, errors.Wrapf(err, "failed to get kubeconfig secret")
+	}
 	if secret.Data == nil {
 		return nil, errors.Errorf("Secret %s/%s  does not contain any data", secret.Namespace, secret.Name)
 	}

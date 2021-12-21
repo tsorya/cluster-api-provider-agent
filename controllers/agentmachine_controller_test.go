@@ -221,7 +221,8 @@ var _ = Describe("agentmachine reconcile", func() {
 		// Create missing link and reconcile again
 		machineOwnerRef := metav1.OwnerReference{APIVersion: "cluster.x-k8s.io/v1beta1", Kind: "Machine", Name: "machine-agentMachine-1"}
 		agentMachine.ObjectMeta.OwnerReferences = append(agentMachine.ObjectMeta.OwnerReferences, machineOwnerRef)
-		c.Update(ctx, agentMachine)
+		err = c.Update(ctx, agentMachine)
+		Expect(err).To(BeNil())
 
 		result, err = amr.Reconcile(ctx, newAgentMachineRequest(agentMachine))
 		Expect(err).To(BeNil())
@@ -327,7 +328,8 @@ var _ = Describe("agentmachine reconcile", func() {
 		machineRef := types.NamespacedName{Namespace: agentMachine.Namespace, Name: agentMachine.ObjectMeta.OwnerReferences[0].Name}
 		Expect(c.Get(ctx, machineRef, machine)).To(BeNil())
 		machine.Spec.Bootstrap.DataSecretName = &secret.ObjectMeta.Name
-		c.Update(ctx, machine)
+		err = c.Update(ctx, machine)
+		Expect(err).To(BeNil())
 
 		// Set Agent
 		result, err := amr.Reconcile(ctx, newAgentMachineRequest(agentMachine))
