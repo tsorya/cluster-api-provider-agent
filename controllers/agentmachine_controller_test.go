@@ -2,9 +2,11 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
+	ignitionapi "github.com/coreos/ignition/v2/config/v3_1/types"
 	"github.com/golang/mock/gomock"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -20,6 +22,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
+	k8sutilspointer "k8s.io/utils/pointer"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -281,14 +284,42 @@ var _ = Describe("agentmachine reconcile", func() {
 		agentMachine := newAgentMachine("agentMachine-1", testNamespace, capiproviderv1alpha1.AgentMachineSpec{}, ctx, c, false)
 		Expect(c.Create(ctx, agentMachine)).To(BeNil())
 
+		ignConfig := ignitionapi.Config{
+			Ignition: ignitionapi.Ignition{
+				Version: "3.1.0",
+				Security: ignitionapi.Security{
+					TLS: ignitionapi.TLS{
+						CertificateAuthorities: []ignitionapi.Resource{
+							{
+								Source: k8sutilspointer.StringPtr("data:text/plain;base64,encodedCACert"),
+							},
+						},
+					},
+				},
+				Config: ignitionapi.IgnitionConfig{
+					Merge: []ignitionapi.Resource{
+						{
+							Source: k8sutilspointer.StringPtr("https://endpoint/ignition"),
+							HTTPHeaders: []ignitionapi.HTTPHeader{
+								{
+									Name:  "Authorization",
+									Value: k8sutilspointer.StringPtr("Bearer encodedToken"),
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		userDataValue, err := json.Marshal(ignConfig)
+		Expect(err).To(BeNil())
 		secret := corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "userdata-secret",
 				Namespace: testNamespace,
 			},
 			Data: map[string][]byte{
-				"machine-config-pool": []byte("ignition"),
-				"ignition-token":      []byte("token"),
+				"value": userDataValue,
 			},
 		}
 		Expect(c.Create(ctx, &secret)).To(BeNil())
@@ -297,7 +328,7 @@ var _ = Describe("agentmachine reconcile", func() {
 		machineRef := types.NamespacedName{Namespace: agentMachine.Namespace, Name: agentMachine.ObjectMeta.OwnerReferences[0].Name}
 		Expect(c.Get(ctx, machineRef, machine)).To(BeNil())
 		machine.Spec.Bootstrap.DataSecretName = &secret.ObjectMeta.Name
-		err := c.Update(ctx, machine)
+		err = c.Update(ctx, machine)
 		Expect(err).To(BeNil())
 
 		// Set Agent
@@ -311,9 +342,12 @@ var _ = Describe("agentmachine reconcile", func() {
 		Expect(result).To(Equal(ctrl.Result{Requeue: true}))
 
 		Expect(c.Get(ctx, types.NamespacedName{Namespace: testNamespace, Name: "agent-1"}, agent)).To(BeNil())
-		Expect(agent.Spec.IgnitionEndpointTokenReference.Namespace).To(BeEquivalentTo(secret.Namespace))
-		Expect(agent.Spec.IgnitionEndpointTokenReference.Name).To(BeEquivalentTo(secret.Name))
-		Expect(agent.Spec.MachineConfigPool).To(BeEquivalentTo("ignition"))
+		Expect(agent.Spec.IgnitionEndpointTokenReference.Name).To(BeEquivalentTo("agent-userdata-secret"))
+		Expect(agent.Spec.IgnitionEndpointTokenReference.Namespace).To(BeEquivalentTo(testNamespace))
+
+		agentSecret := &corev1.Secret{}
+		Expect(c.Get(ctx, types.NamespacedName{Namespace: testNamespace, Name: "agent-userdata-secret"}, agentSecret)).To(BeNil())
+		Expect(agentSecret.Data["ignition-token"]).To(BeEquivalentTo([]byte("encodedToken")))
 	})
 
 	It("agentMachine find agent end-to-end", func() {
