@@ -1049,8 +1049,8 @@ github.com/openshift/api v0.0.0-20201019163320-c6a5ec25f267/go.mod h1:RDvBcRQMGL
 github.com/openshift/api v0.0.0-20210216211028-bb81baaf35cd/go.mod h1:aqU5Cq+kqKKPbDMqxo9FojgDeSpNJI7iuskjXjtojDg=
 github.com/openshift/api v3.9.1-0.20191111211345-a27ff30ebf09+incompatible h1:AvJ2SgJ7ekSlEL/wyeVMffxDkbKohp4JLge9wMtT23o=
 github.com/openshift/api v3.9.1-0.20191111211345-a27ff30ebf09+incompatible/go.mod h1:dh9o4Fs58gpFXGSYfnVxGR9PnV53I8TW84pQaJDdGiY=
-github.com/openshift/assisted-service v1.0.10-0.20211202003107-1439a827f959 h1:3JZKmQoGbbZaYOA3jI5gLAAIGUEXjbQ37vBl8KEuguQ=
-github.com/openshift/assisted-service v1.0.10-0.20211202003107-1439a827f959/go.mod h1:27Z02es7yJUu34pFYCUoxKDySD7/1D0WpuBBmzj4ORg=
+github.com/openshift/assisted-service v1.0.10-0.20211222073756-b8f972455c0a h1:SpSJ97VlNH4Ot96hSMOmlNTWE4wmCs4sPup9asMC1Gc=
+github.com/openshift/assisted-service v1.0.10-0.20211222073756-b8f972455c0a/go.mod h1:27Z02es7yJUu34pFYCUoxKDySD7/1D0WpuBBmzj4ORg=
 github.com/openshift/baremetal-operator v0.0.0-20210409032903-31b989a197eb/go.mod h1:n34Id58U3kzxyhLs+HWEX7IuScU0DMYMLVwxIvSlGCI=
 github.com/openshift/build-machinery-go v0.0.0-20200211121458-5e3d6e570160/go.mod h1:1CkcsT3aVebzRBzVTSbiKSkJMsC/CASqxesfqEMfJEc=
 github.com/openshift/build-machinery-go v0.0.0-20200424080330-082bf86082cc/go.mod h1:1CkcsT3aVebzRBzVTSbiKSkJMsC/CASqxesfqEMfJEc=
