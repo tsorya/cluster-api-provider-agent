@@ -18,13 +18,11 @@ package controllers
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"strings"
 	"time"
 
-	ignitionapi "github.com/coreos/ignition/v2/config/v3_1/types"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+
 	"github.com/go-openapi/swag"
 	aiv1beta1 "github.com/openshift/assisted-service/api/v1beta1"
 	"github.com/sirupsen/logrus"
@@ -249,39 +247,19 @@ func (r *AgentMachineReconciler) setAgentIgnitionEndpoint(ctx context.Context, l
 		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
 	}
 
-	ignitionConfig := &ignitionapi.Config{}
-	if err := json.Unmarshal(secret.Data["value"], ignitionConfig); err != nil {
-		log.WithError(err).Errorf("Failed to unmarshal user-data secret %s", *machine.Spec.Bootstrap.DataSecretName)
-		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
-	}
-
-	if len(ignitionConfig.Ignition.Config.Merge) != 1 {
-		log.Errorf("expected one ignition source in secret %s but found %d", *machine.Spec.Bootstrap.DataSecretName, len(ignitionConfig.Ignition.Config.Merge))
-		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, errors.New("did not find one ignition source as expected")
-	}
-
-	ignitionSource := ignitionConfig.Ignition.Config.Merge[0]
-	ignitionSourceSuffix := (*ignitionSource.Source)[strings.LastIndex((*ignitionSource.Source), "/")+1:]
-	if agent.Spec.MachineConfigPool != ignitionSourceSuffix {
-		log.Infof("Setting MachineConfigPool to %s", agent.Spec.MachineConfigPool)
-		agent.Spec.MachineConfigPool = ignitionSourceSuffix
+	machineConfigPool := string(secret.Data["machine-config-pool"])
+	if agent.Spec.MachineConfigPool != machineConfigPool {
+		log.Infof("Setting MachineConfigPool to %s", machineConfigPool)
+		agent.Spec.MachineConfigPool = machineConfigPool
 		updateAgent = true
 	}
 
-	for _, header := range ignitionSource.HTTPHeaders {
-		if header.Name != "Authorization" {
-			continue
+	if agent.Spec.IgnitionEndpointTokenReference == nil {
+		agent.Spec.IgnitionEndpointTokenReference = &aiv1beta1.IgnitionEndpointTokenReference{
+			Namespace: machine.Namespace,
+			Name:      *machine.Spec.Bootstrap.DataSecretName,
 		}
-		expectedPrefix := "Bearer "
-		if !strings.HasPrefix(*header.Value, expectedPrefix) {
-			log.Errorf("did not find expected prefix for bearer token in user-data secret %s", *machine.Spec.Bootstrap.DataSecretName)
-			return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, errors.New("did not find expected prefix for bearer token")
-		}
-		token := (*header.Value)[len(expectedPrefix):]
-		if agent.Spec.IgnitionEndpointToken != token {
-			agent.Spec.IgnitionEndpointToken = token
-			updateAgent = true
-		}
+		updateAgent = true
 	}
 
 	if updateAgent {

@@ -64,10 +64,23 @@ spec:
                 description: IgnitionEndpoint store the data to of the custom ignition
                   endpoint.
                 properties:
-                  caCertificate:
-                    description: CaCertificate a CA certficate to be used when contacting
-                      the URL via https.
-                    type: string
+                  caCertificateReference:
+                    description: CaCertificateReference is a reference to the secret
+                      containing CA certificate to be used when contacting the URL
+                      via HTTPS.
+                    properties:
+                      name:
+                        description: Name is the name of the secret containing the
+                          CA certificate.
+                        type: string
+                      namespace:
+                        description: Namespace is the namespace of the secret containing
+                          the CA certificate.
+                        type: string
+                    required:
+                    - name
+                    - namespace
+                    type: object
                   url:
                     description: Url store the URL of the custom ignition endpoint.
                     type: string
