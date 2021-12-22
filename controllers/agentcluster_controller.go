@@ -170,7 +170,7 @@ func (r *AgentClusterReconciler) createImageSet(ctx context.Context, log logrus.
 	}
 	if err := r.Client.Create(ctx, clusterImageSet); err != nil {
 		log.WithError(err).Error("Failed to create ClusterImageSet")
-		return ctrl.Result{Requeue: true}, err
+		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
 	}
 	return ctrl.Result{Requeue: true}, nil
 }

@@ -18,10 +18,15 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+
+	ignitionapi "github.com/coreos/ignition/v2/config/v3_1/types"
 
 	"github.com/go-openapi/swag"
 	aiv1beta1 "github.com/openshift/assisted-service/api/v1beta1"
@@ -238,37 +243,77 @@ func (r *AgentMachineReconciler) findAgent(ctx context.Context, log logrus.Field
 
 func (r *AgentMachineReconciler) setAgentIgnitionEndpoint(ctx context.Context, log logrus.FieldLogger, agent *aiv1beta1.Agent, agentMachine *capiproviderv1alpha1.AgentMachine, machine *clusterv1.Machine) (ctrl.Result, error) {
 	log.Debug("Setting Ignition endpoint info")
-	updateAgent := false
 
-	secret := &corev1.Secret{}
-	secretRef := types.NamespacedName{Namespace: machine.Namespace, Name: *machine.Spec.Bootstrap.DataSecretName}
-	if err := r.Get(ctx, secretRef, secret); err != nil {
+	// For now we assume that we have bootstrap data that is an ignition config containing the ignition source and token.
+	// We also assume that once set, it will not change, so we only need to reconcile this once.
+	bootstrapDataSecret := &corev1.Secret{}
+	bootstrapDataSecretRef := types.NamespacedName{Namespace: machine.Namespace, Name: *machine.Spec.Bootstrap.DataSecretName}
+	if err := r.Get(ctx, bootstrapDataSecretRef, bootstrapDataSecret); err != nil {
 		log.WithError(err).Errorf("Failed to get user-data secret %s", *machine.Spec.Bootstrap.DataSecretName)
 		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
 	}
 
-	machineConfigPool := string(secret.Data["machine-config-pool"])
-	if agent.Spec.MachineConfigPool != machineConfigPool {
-		log.Infof("Setting MachineConfigPool to %s", machineConfigPool)
-		agent.Spec.MachineConfigPool = machineConfigPool
-		updateAgent = true
+	ignitionConfig := &ignitionapi.Config{}
+	if err := json.Unmarshal(bootstrapDataSecret.Data["value"], ignitionConfig); err != nil {
+		log.WithError(err).Errorf("Failed to unmarshal user-data secret %s", *machine.Spec.Bootstrap.DataSecretName)
+		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
 	}
 
-	if agent.Spec.IgnitionEndpointTokenReference == nil {
-		agent.Spec.IgnitionEndpointTokenReference = &aiv1beta1.IgnitionEndpointTokenReference{
+	if len(ignitionConfig.Ignition.Config.Merge) != 1 {
+		log.Errorf("expected one ignition source in secret %s but found %d", *machine.Spec.Bootstrap.DataSecretName, len(ignitionConfig.Ignition.Config.Merge))
+		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, errors.New("did not find one ignition source as expected")
+	}
+
+	ignitionSource := ignitionConfig.Ignition.Config.Merge[0]
+	ignitionSourceSuffix := (*ignitionSource.Source)[strings.LastIndex((*ignitionSource.Source), "/")+1:]
+
+	// If the MachineConfigPool was set then assume we already reconciled and can return
+	if agent.Spec.MachineConfigPool == ignitionSourceSuffix {
+		return ctrl.Result{Requeue: true}, nil
+	}
+
+	log.Infof("Setting MachineConfigPool to %s", agent.Spec.MachineConfigPool)
+	agent.Spec.MachineConfigPool = ignitionSourceSuffix
+
+	token := ""
+	for _, header := range ignitionSource.HTTPHeaders {
+		if header.Name != "Authorization" {
+			continue
+		}
+		expectedPrefix := "Bearer "
+		if !strings.HasPrefix(*header.Value, expectedPrefix) {
+			log.Errorf("did not find expected prefix for bearer token in user-data secret %s", *machine.Spec.Bootstrap.DataSecretName)
+			return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, errors.New("did not find expected prefix for bearer token")
+		}
+		token = (*header.Value)[len(expectedPrefix):]
+	}
+
+	ignitionTokenSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
 			Namespace: machine.Namespace,
-			Name:      *machine.Spec.Bootstrap.DataSecretName,
+			Name:      fmt.Sprintf("agent-%s", *machine.Spec.Bootstrap.DataSecretName),
+		},
+		Data: map[string][]byte{"ignition-token": []byte(token)},
+	}
+	// TODO Delete secret upon cleanup
+	if err := r.Client.Create(ctx, ignitionTokenSecret); err != nil {
+		if !apierrors.IsAlreadyExists(err) {
+			log.WithError(err).Error("Failed to create ignitionTokenSecret")
+			return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, err
 		}
-		updateAgent = true
 	}
 
-	if updateAgent {
-		if agentUpdateErr := r.Update(ctx, agent); agentUpdateErr != nil {
-			log.WithError(agentUpdateErr).Error("failed to update Agent with ignition endpoint")
-			return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, agentUpdateErr
-		}
-		log.Info("Successfully updated Ignition endpoint token and MachineConfigPool")
+	agent.Spec.IgnitionEndpointTokenReference = &aiv1beta1.IgnitionEndpointTokenReference{
+		Namespace: ignitionTokenSecret.Namespace,
+		Name:      ignitionTokenSecret.Name,
 	}
+
+	if agentUpdateErr := r.Update(ctx, agent); agentUpdateErr != nil {
+		log.WithError(agentUpdateErr).Error("failed to update Agent with ignition endpoint")
+		return ctrl.Result{RequeueAfter: defaultRequeueAfterOnError}, agentUpdateErr
+	}
+	log.Info("Successfully updated Ignition endpoint token and MachineConfigPool")
+
 	return ctrl.Result{Requeue: true}, nil
 }
 
