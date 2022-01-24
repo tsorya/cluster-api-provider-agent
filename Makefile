@@ -92,6 +92,8 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
+format:
+	@goimports -w -l controllers/ || /bin/true
 
 lint: golint ## Run golangci-lint against code.
 	$(GOLINT) run -v ./...
@@ -107,7 +109,7 @@ build: generate fmt vet lint ## Build manager binary.
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./main.go
 
-docker-build: test ## Build docker image with the manager.
+docker-build:  ## Build docker image with the manager.
 	docker build -t ${IMG} .
 
 docker-push: ## Push docker image with the manager.

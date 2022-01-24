@@ -24,14 +24,18 @@ import (
 	capiproviderv1alpha1 "github.com/openshift/cluster-api-provider-agent/api/v1alpha1"
 	hivev1 "github.com/openshift/hive/apis/hive/v1"
 	"github.com/openshift/hive/apis/hive/v1/agent"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	clusterutilv1 "sigs.k8s.io/cluster-api/util"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 // AgentClusterReconciler reconciles a AgentCluster object
@@ -46,6 +50,7 @@ type AgentClusterReconciler struct {
 //+kubebuilder:rbac:groups=capi-provider.agent-install.openshift.io,resources=agentclusters/finalizers,verbs=update
 //+kubebuilder:rbac:groups=hive.openshift.io,resources=clusterdeployments,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=extensions.hive.openshift.io,resources=agentclusterinstalls,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=hypershift.openshift.io,resources=hostedcontrolplanes,verbs=get;list;watch;
 
 func (r *AgentClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithFields(
@@ -132,21 +137,61 @@ func (r *AgentClusterReconciler) updateAgentClusterInstall(ctx context.Context, 
 
 func (r *AgentClusterReconciler) createClusterDeployment(ctx context.Context, log logrus.FieldLogger, agentCluster *capiproviderv1alpha1.AgentCluster) (ctrl.Result, error) {
 	log.Info("Creating clusterDeployment")
+
+	log.Info("Getting control plane")
+	// Fetch the CAPI Cluster.
+	cluster, err := clusterutilv1.GetOwnerCluster(ctx, r.Client, agentCluster.ObjectMeta)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+	if cluster == nil {
+		log.Info("Waiting for Cluster Controller to set OwnerRef on AgentCluster")
+		return reconcile.Result{}, nil
+	}
+	if cluster.Spec.ControlPlaneRef == nil {
+		log.Info("Waiting for Cluster to have OwnerRef on Control Plane")
+		return reconcile.Result{}, nil
+	}
+
+	obj := clusterutilv1.ObjectReferenceToUnstructured(*cluster.Spec.ControlPlaneRef)
+	key := client.ObjectKey{Name: obj.GetName(), Namespace: obj.GetNamespace()}
+	if err = r.Client.Get(ctx, key, obj); err != nil {
+		return reconcile.Result{}, errors.Wrapf(err, "failed to retrieve %s external object %q/%q", obj.GetKind(), key.Namespace, key.Name)
+	}
+
 	clusterDeployment := &hivev1.ClusterDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      agentCluster.Name,
 			Namespace: agentCluster.Namespace,
 		},
 		Spec: hivev1.ClusterDeploymentSpec{
-			Installed:     true,
-			BaseDomain:    agentCluster.Spec.BaseDomain,
-			ClusterName:   agentCluster.Spec.ClusterName,
-			PullSecretRef: agentCluster.Spec.PullSecretRef,
+			Installed:   true,
+			ClusterName: agentCluster.Spec.ClusterName,
 			Platform: hivev1.Platform{
 				AgentBareMetal: &agent.BareMetalPlatform{},
 			},
 		},
 	}
+
+	var ok bool
+	clusterDeployment.Spec.BaseDomain, ok, err = unstructured.NestedString(obj.UnstructuredContent(), "spec", "dns", "baseDomain")
+	if !ok {
+		return reconcile.Result{}, nil
+	}
+	if err != nil {
+		return ctrl.Result{}, errors.Wrap(err, "failed to get basedomain")
+	}
+
+	pullSecretName, ok, err := unstructured.NestedString(obj.UnstructuredContent(), "spec", "pullSecret", "name")
+	if !ok {
+		return reconcile.Result{}, nil
+	}
+	if err != nil {
+		return ctrl.Result{}, errors.Wrap(err, "failed to get base domain")
+	}
+
+	clusterDeployment.Spec.PullSecretRef = &corev1.LocalObjectReference{Name: pullSecretName}
+
 	agentCluster.Status.ClusterDeploymentRef.Name = clusterDeployment.Name
 	agentCluster.Status.ClusterDeploymentRef.Namespace = clusterDeployment.Namespace
 	if err := r.Client.Create(ctx, clusterDeployment); err != nil {
@@ -198,7 +243,7 @@ func (r *AgentClusterReconciler) createAgentClusterInstall(ctx context.Context, 
 			Namespace: clusterDeployment.Namespace,
 		},
 		Spec: hiveext.AgentClusterInstallSpec{
-			ClusterDeploymentRef: v1.LocalObjectReference{Name: clusterDeployment.Name},
+			ClusterDeploymentRef: corev1.LocalObjectReference{Name: clusterDeployment.Name},
 		},
 	}
 	return r.Client.Create(ctx, agentClusterInstall)

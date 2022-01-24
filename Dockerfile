@@ -6,7 +6,7 @@ COPY . .
 # Build
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o manager main.go
 
-FROM registry.ci.openshift.org/ocp/4.10:base
+FROM quay.io/centos/centos:stream8
 WORKDIR /
 COPY --from=builder /workspace/manager .
 USER 65532:65532
