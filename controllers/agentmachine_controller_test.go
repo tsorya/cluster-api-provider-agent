@@ -62,7 +62,6 @@ func newAgentMachine(name, namespace string, spec capiproviderv1alpha1.AgentMach
 			Name:      fmt.Sprintf("agent-cluster-%s", name),
 			Namespace: namespace,
 		},
-		Spec:   capiproviderv1alpha1.AgentClusterSpec{ClusterName: "foo", BaseDomain: "example.com"},
 		Status: capiproviderv1alpha1.AgentClusterStatus{ClusterDeploymentRef: capiproviderv1alpha1.ClusterDeploymentReference{Namespace: namespace, Name: clusterDeployment.Name}},
 	}
 	Expect(c.Create(ctx, &agentCluster)).To(BeNil())

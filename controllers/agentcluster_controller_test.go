@@ -13,8 +13,11 @@ import (
 	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	fakeclient "sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -24,6 +27,7 @@ func init() {
 	_ = hivev1.AddToScheme(scheme.Scheme)
 	_ = hiveext.AddToScheme(scheme.Scheme)
 	_ = capiproviderv1alpha1.AddToScheme(scheme.Scheme)
+	_ = clusterv1.AddToScheme(scheme.Scheme)
 }
 
 func newAgentClusterRequest(agentCluster *capiproviderv1alpha1.AgentCluster) ctrl.Request {
@@ -44,6 +48,73 @@ func newAgentCluster(name, namespace string, spec capiproviderv1alpha1.AgentClus
 	}
 }
 
+// newCluster return a CAPI cluster object.
+func newCluster(namespacedName *types.NamespacedName) *clusterv1.Cluster {
+	spec := clusterv1.ClusterSpec{
+		ControlPlaneRef: &corev1.ObjectReference{
+			Kind:       "HostedControlPlane",
+			Namespace:  namespacedName.Namespace,
+			Name:       namespacedName.Name,
+			APIVersion: schema.GroupVersion{Group: "cluster.x-k8s.io", Version: "v1beta1"}.String(),
+		},
+		InfrastructureRef: &corev1.ObjectReference{
+			Kind:       "AgentCluster",
+			Namespace:  namespacedName.Namespace,
+			Name:       namespacedName.Name,
+			APIVersion: schema.GroupVersion{Group: "cluster.x-k8s.io", Version: "v1beta1"}.String(),
+		},
+	}
+
+	return &clusterv1.Cluster{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Cluster",
+			APIVersion: clusterv1.GroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespacedName.Namespace,
+			Name:      namespacedName.Name,
+		},
+		Spec: spec,
+	}
+}
+
+func createControlPlane(namespacedName *types.NamespacedName, baseDomain, pullSecretName string) *unstructured.Unstructured {
+	return &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"kind":       "HostedControlPlane",
+			"apiVersion": schema.GroupVersion{Group: "cluster.x-k8s.io", Version: "v1beta1"}.String(),
+			"metadata": map[string]interface{}{
+				"name":      namespacedName.Name,
+				"namespace": namespacedName.Namespace,
+			},
+			"spec": map[string]interface{}{
+				"dns": map[string]interface{}{
+					"baseDomain": baseDomain,
+				},
+				"pullSecret": map[string]interface{}{
+					"name": pullSecretName,
+				},
+			},
+		},
+	}
+}
+
+func createDefaultResources(ctx context.Context, c client.Client, clusterName, testNamespace, baseDomain, pullSecretName string) *capiproviderv1alpha1.AgentCluster {
+	namespaced := &types.NamespacedName{Name: clusterName, Namespace: testNamespace}
+	cluster := newCluster(namespaced)
+	agentCluster := newAgentCluster(clusterName, testNamespace, capiproviderv1alpha1.AgentClusterSpec{
+		IgnitionEndpoint: &capiproviderv1alpha1.IgnitionEndpoint{Url: "https://1.2.3.4:555/ignition"},
+	})
+
+	agentCluster.OwnerReferences = []metav1.OwnerReference{{Name: cluster.Name, Kind: cluster.Kind, APIVersion: cluster.APIVersion}}
+	controlPlane := createControlPlane(namespaced, baseDomain, pullSecretName)
+
+	Expect(c.Create(ctx, cluster)).To(BeNil())
+	Expect(c.Create(ctx, agentCluster)).To(BeNil())
+	Expect(c.Create(ctx, controlPlane)).To(BeNil())
+	return agentCluster
+}
+
 var _ = Describe("agentcluster reconcile", func() {
 	var (
 		c             client.Client
@@ -51,6 +122,9 @@ var _ = Describe("agentcluster reconcile", func() {
 		ctx           = context.Background()
 		mockCtrl      *gomock.Controller
 		testNamespace = "test-namespace"
+		clusterName   = "test-cluster-name"
+		baseDomain    = "test.com"
+		pullSecret    = "pull-secret"
 	)
 
 	BeforeEach(func() {
@@ -78,51 +152,65 @@ var _ = Describe("agentcluster reconcile", func() {
 		Expect(err).To(BeNil())
 		Expect(result).To(Equal(ctrl.Result{}))
 	})
-
 	It("agentCluster ready status", func() {
-		agentCluster := newAgentCluster("agentCluster-1", testNamespace, capiproviderv1alpha1.AgentClusterSpec{})
+		agentCluster := createDefaultResources(ctx, c, clusterName, testNamespace, baseDomain, pullSecret)
 		agentCluster.Status.Ready = true
-		Expect(c.Create(ctx, agentCluster)).To(BeNil())
+		Expect(c.Update(ctx, agentCluster)).To(BeNil())
 
 		result, err := acr.Reconcile(ctx, newAgentClusterRequest(agentCluster))
 		Expect(err).To(BeNil())
 		Expect(result).To(Equal(ctrl.Result{}))
 	})
 	It("create clusterDeployment for agentCluster", func() {
-		domain := "test-domain.com"
-		clusterName := "test-cluster-name"
-		pullSecretName := "test-pull-secret-name"
-		agentCluster := newAgentCluster("agentCluster-1", testNamespace, capiproviderv1alpha1.AgentClusterSpec{
-			BaseDomain:  domain,
-			ClusterName: clusterName,
-			PullSecretRef: &corev1.LocalObjectReference{
-				Name: pullSecretName,
-			},
-			IgnitionEndpoint: &capiproviderv1alpha1.IgnitionEndpoint{Url: "https://1.2.3.4:555/ignition"},
-		})
-		Expect(c.Create(ctx, agentCluster)).To(BeNil())
-
+		agentCluster := createDefaultResources(ctx, c, clusterName, testNamespace, baseDomain, pullSecret)
 		result, err := acr.Reconcile(ctx, newAgentClusterRequest(agentCluster))
 		Expect(err).To(BeNil())
 		Expect(result).To(Equal(ctrl.Result{}))
 
 		key := types.NamespacedName{
 			Namespace: testNamespace,
-			Name:      "agentCluster-1",
+			Name:      clusterName,
 		}
 		Expect(c.Get(ctx, key, agentCluster)).To(BeNil())
 		Expect(agentCluster.Status.ClusterDeploymentRef.Name).ToNot(Equal(""))
+
+		clusterDeployment := &hivev1.ClusterDeployment{}
+		err = c.Get(ctx, key, clusterDeployment)
+		Expect(err).To(BeNil())
+		Expect(clusterDeployment.Spec.BaseDomain).To(Equal(baseDomain))
+		Expect(clusterDeployment.Spec.PullSecretRef.Name).To(Equal(pullSecret))
+		Expect(clusterDeployment.Spec.ClusterName).To(Equal(clusterName))
 	})
-	It("failed to find clusterDeployment", func() {
-		domain := "test-domain.com"
-		clusterName := "test-cluster-name"
-		pullSecretName := "test-pull-secret-name"
+	It("failed to find cluster", func() {
 		agentCluster := newAgentCluster("agentCluster-1", testNamespace, capiproviderv1alpha1.AgentClusterSpec{
-			BaseDomain:  domain,
-			ClusterName: clusterName,
-			PullSecretRef: &corev1.LocalObjectReference{
-				Name: pullSecretName,
-			},
+			IgnitionEndpoint: &capiproviderv1alpha1.IgnitionEndpoint{Url: "https://1.2.3.4:555/ignition"},
+		})
+		Expect(c.Create(ctx, agentCluster)).To(BeNil())
+		result, err := acr.Reconcile(ctx, newAgentClusterRequest(agentCluster))
+		Expect(err).To(BeNil())
+		Expect(result).To(Equal(ctrl.Result{Requeue: true}))
+	})
+	It("no control plane reference in cluster", func() {
+		clusterName := "test-cluster-name"
+
+		cluster := newCluster(&types.NamespacedName{Name: clusterName, Namespace: testNamespace})
+		cluster.Spec.ControlPlaneRef = nil
+
+		agentCluster := newAgentCluster(clusterName, testNamespace, capiproviderv1alpha1.AgentClusterSpec{
+			IgnitionEndpoint: &capiproviderv1alpha1.IgnitionEndpoint{Url: "https://1.2.3.4:555/ignition"},
+		})
+		agentCluster.OwnerReferences = []metav1.OwnerReference{{Name: cluster.Name, Kind: cluster.Kind, APIVersion: cluster.APIVersion}}
+
+		Expect(c.Create(ctx, agentCluster)).To(BeNil())
+		Expect(c.Create(ctx, cluster)).To(BeNil())
+		result, err := acr.Reconcile(ctx, newAgentClusterRequest(agentCluster))
+		Expect(err).To(BeNil())
+		Expect(result).To(Equal(ctrl.Result{Requeue: true}))
+
+	})
+
+	It("failed to find clusterDeployment", func() {
+		agentCluster := newAgentCluster("agentCluster-1", testNamespace, capiproviderv1alpha1.AgentClusterSpec{
 			IgnitionEndpoint: &capiproviderv1alpha1.IgnitionEndpoint{Url: "https://1.2.3.4:555/ignition"},
 		})
 		agentCluster.Status.ClusterDeploymentRef.Name = "missing-cluster-deployment-name"
@@ -134,28 +222,14 @@ var _ = Describe("agentcluster reconcile", func() {
 		Expect(result).To(Equal(ctrl.Result{Requeue: true}))
 	})
 	It("create AgentClusterInstall for agentCluster", func() {
-		domain := "test-domain.com"
-		clusterName := "test-cluster-name"
-		pullSecretName := "test-pull-secret-name"
-		agentCluster := newAgentCluster("agentCluster-1", testNamespace, capiproviderv1alpha1.AgentClusterSpec{
-			BaseDomain:  domain,
-			ClusterName: clusterName,
-			PullSecretRef: &corev1.LocalObjectReference{
-				Name: pullSecretName,
-			},
-			IgnitionEndpoint: &capiproviderv1alpha1.IgnitionEndpoint{Url: "https://1.2.3.4:555/ignition"},
-		})
-		agentCluster.Status.ClusterDeploymentRef.Name = agentCluster.Name
-		agentCluster.Status.ClusterDeploymentRef.Namespace = agentCluster.Namespace
-		Expect(c.Create(ctx, agentCluster)).To(BeNil())
-
-		createClusterDeployment(c, ctx, agentCluster)
+		agentCluster := createDefaultResources(ctx, c, "agentCluster-1", testNamespace, baseDomain, pullSecret)
 
 		_, _ = acr.Reconcile(ctx, newAgentClusterRequest(agentCluster))
 
+		_, _ = acr.Reconcile(ctx, newAgentClusterRequest(agentCluster))
 		key := types.NamespacedName{
 			Namespace: testNamespace,
-			Name:      "agentCluster-1",
+			Name:      agentCluster.Name,
 		}
 		Expect(c.Get(ctx, key, agentCluster)).To(BeNil())
 		Expect(agentCluster.Status.ClusterDeploymentRef.Name).To(Equal("agentCluster-1"))
@@ -164,15 +238,7 @@ var _ = Describe("agentcluster reconcile", func() {
 		Expect(c.Get(ctx, key, agentClusterInstall)).To(BeNil())
 	})
 	It("agentCluster missing controlPlaneEndpoint", func() {
-		domain := "test-domain.com"
-		clusterName := "test-cluster-name"
-		pullSecretName := "test-pull-secret-name"
 		agentCluster := newAgentCluster("agentCluster-1", testNamespace, capiproviderv1alpha1.AgentClusterSpec{
-			BaseDomain:  domain,
-			ClusterName: clusterName,
-			PullSecretRef: &corev1.LocalObjectReference{
-				Name: pullSecretName,
-			},
 			IgnitionEndpoint: &capiproviderv1alpha1.IgnitionEndpoint{Url: "https://1.2.3.4:555/ignition"},
 		})
 
@@ -181,7 +247,7 @@ var _ = Describe("agentcluster reconcile", func() {
 		Expect(c.Create(ctx, agentCluster)).To(BeNil())
 
 		createAgentClusterInstall(c, ctx, agentCluster.Namespace, agentCluster.Name)
-		createClusterDeployment(c, ctx, agentCluster)
+		createClusterDeployment(c, ctx, agentCluster, "agentCluster-1", baseDomain, pullSecret)
 
 		result, err := acr.Reconcile(ctx, newAgentClusterRequest(agentCluster))
 		Expect(err).To(BeNil())
@@ -189,7 +255,7 @@ var _ = Describe("agentcluster reconcile", func() {
 	})
 })
 
-func createClusterDeployment(c client.Client, ctx context.Context, agentCluster *capiproviderv1alpha1.AgentCluster) {
+func createClusterDeployment(c client.Client, ctx context.Context, agentCluster *capiproviderv1alpha1.AgentCluster, clusterName, baseDomain, pullSecretName string) {
 	clusterDeployment := &hivev1.ClusterDeployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      agentCluster.Name,
@@ -197,9 +263,9 @@ func createClusterDeployment(c client.Client, ctx context.Context, agentCluster 
 		},
 		Spec: hivev1.ClusterDeploymentSpec{
 			Installed:     true,
-			BaseDomain:    agentCluster.Spec.BaseDomain,
-			ClusterName:   agentCluster.Spec.ClusterName,
-			PullSecretRef: agentCluster.Spec.PullSecretRef,
+			BaseDomain:    baseDomain,
+			ClusterName:   clusterName,
+			PullSecretRef: &corev1.LocalObjectReference{Name: pullSecretName},
 			ClusterInstallRef: &hivev1.ClusterInstallLocalReference{
 				Kind:    "AgentClusterInstall",
 				Group:   hiveext.Group,

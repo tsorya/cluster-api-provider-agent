@@ -97,6 +97,8 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
+format:
+	$(GOLINT) run --fix -v	
 
 lint: golint ## Run golangci-lint against code.
 	$(GOLINT) run -v ./...

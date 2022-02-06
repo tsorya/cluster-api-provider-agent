@@ -120,3 +120,11 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - hypershift.openshift.io
+  resources:
+  - hostedcontrolplanes
+  verbs:
+  - get
+  - list
+  - watch
