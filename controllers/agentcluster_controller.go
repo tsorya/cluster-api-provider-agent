@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	hiveext "github.com/openshift/assisted-service/api/hiveextension/v1beta1"
@@ -47,9 +48,11 @@ type AgentClusterReconciler struct {
 }
 
 type ControlPlane struct {
-	BaseDomain    string
-	ClusterName   string
-	PullSecretRef *corev1.LocalObjectReference
+	BaseDomain        string
+	ClusterName       string
+	PullSecret        string
+	KubeConfig        string
+	KubeadminPassword string
 }
 
 //+kubebuilder:rbac:groups=capi-provider.agent-install.openshift.io,resources=agentclusters,verbs=get;list;watch;create;update;patch;delete
@@ -145,6 +148,17 @@ func (r *AgentClusterReconciler) updateAgentClusterInstall(ctx context.Context, 
 	return ctrl.Result{}, nil
 }
 
+func getNestedStringObject(obj *unstructured.Unstructured, baseFieldName string, fields ...string) (string, error) {
+	value, ok, err := unstructured.NestedString(obj.UnstructuredContent(), fields...)
+	if err != nil {
+		return value, errors.Wrap(err, fmt.Sprintf("failed to get %s", baseFieldName))
+	}
+	if !ok {
+		return value, errors.Errorf("No %s was found", baseFieldName)
+	}
+	return value, nil
+}
+
 func (r *AgentClusterReconciler) getControlPlane(ctx context.Context, log logrus.FieldLogger,
 	agentCluster *capiproviderv1alpha1.AgentCluster) (*ControlPlane, error) {
 
@@ -171,27 +185,27 @@ func (r *AgentClusterReconciler) getControlPlane(ctx context.Context, log logrus
 		return nil, errors.Wrapf(err, "failed to retrieve %s external object %q/%q", obj.GetKind(), key.Namespace, key.Name)
 	}
 
-	var ok bool
-	controlPlane.BaseDomain, ok, err = unstructured.NestedString(obj.UnstructuredContent(), "spec", "dns", "baseDomain")
-	if !ok {
-		log.Infof("Control plane object has no baseDomain, waiting more")
-		return nil, nil
-	}
+	controlPlane.BaseDomain, err = getNestedStringObject(obj, "base domain", "spec", "dns", "baseDomain")
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get base domain")
+		return nil, err
 	}
 
-	pullSecretName, ok, err := unstructured.NestedString(obj.UnstructuredContent(), "spec", "pullSecret", "name")
-	if !ok {
-		log.Infof("Control plane object has no pullSecretName, waiting more")
-		return nil, nil
-	}
+	controlPlane.PullSecret, err = getNestedStringObject(obj, "pull secret name", "spec", "pullSecret", "name")
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to get pull secret ref")
+		return nil, err
 	}
-	controlPlane.PullSecretRef = &corev1.LocalObjectReference{Name: pullSecretName}
+
+	controlPlane.KubeConfig, err = getNestedStringObject(obj, "kubeconfig", "status", "kubeConfig", "name")
+	if err != nil {
+		return nil, err
+	}
+
+	controlPlane.KubeadminPassword, err = getNestedStringObject(obj, "kubeadmin password", "status", "kubeadminPassword", "name")
+	if err != nil {
+		return nil, err
+	}
+
 	controlPlane.ClusterName = cluster.Spec.ControlPlaneRef.Name
-
 	return &controlPlane, nil
 }
 
@@ -216,7 +230,17 @@ func (r *AgentClusterReconciler) createClusterDeploymentObject(agentCluster *cap
 				Name:    agentCluster.Name,
 			},
 			BaseDomain:    controlPlane.BaseDomain,
-			PullSecretRef: controlPlane.PullSecretRef,
+			PullSecretRef: &corev1.LocalObjectReference{Name: controlPlane.PullSecret},
+			ClusterMetadata: &hivev1.ClusterMetadata{
+				ClusterID: string(agentCluster.OwnerReferences[0].UID),
+				InfraID:   string(agentCluster.OwnerReferences[0].UID),
+				AdminKubeconfigSecretRef: corev1.LocalObjectReference{
+					Name: controlPlane.KubeConfig,
+				},
+				AdminPasswordSecretRef: &corev1.LocalObjectReference{
+					Name: controlPlane.KubeadminPassword,
+				},
+			},
 		},
 	}
 
