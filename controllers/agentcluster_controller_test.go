@@ -78,7 +78,7 @@ func newCluster(namespacedName *types.NamespacedName) *clusterv1.Cluster {
 	}
 }
 
-func createControlPlane(namespacedName *types.NamespacedName, baseDomain, pullSecretName string) *unstructured.Unstructured {
+func createControlPlane(namespacedName *types.NamespacedName, baseDomain, pullSecretName, kubeconfig, kubeadminPassword string) *unstructured.Unstructured {
 	return &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"kind":       "HostedControlPlane",
@@ -95,11 +95,21 @@ func createControlPlane(namespacedName *types.NamespacedName, baseDomain, pullSe
 					"name": pullSecretName,
 				},
 			},
+			"status": map[string]interface{}{
+				"externalManagedControlPlane": true,
+				"kubeConfig": map[string]interface{}{
+					"name": kubeconfig,
+					"key":  "kubeconfig",
+				},
+				"kubeadminPassword": map[string]interface{}{
+					"name": kubeadminPassword,
+				},
+			},
 		},
 	}
 }
 
-func createDefaultResources(ctx context.Context, c client.Client, clusterName, testNamespace, baseDomain, pullSecretName string) *capiproviderv1alpha1.AgentCluster {
+func createDefaultResources(ctx context.Context, c client.Client, clusterName, testNamespace, baseDomain, pullSecretName, kubeconfig, kubeadminPassword string) *capiproviderv1alpha1.AgentCluster {
 	namespaced := &types.NamespacedName{Name: clusterName, Namespace: testNamespace}
 	cluster := newCluster(namespaced)
 	agentCluster := newAgentCluster(clusterName, testNamespace, capiproviderv1alpha1.AgentClusterSpec{
@@ -107,7 +117,7 @@ func createDefaultResources(ctx context.Context, c client.Client, clusterName, t
 	})
 
 	agentCluster.OwnerReferences = []metav1.OwnerReference{{Name: cluster.Name, Kind: cluster.Kind, APIVersion: cluster.APIVersion}}
-	controlPlane := createControlPlane(namespaced, baseDomain, pullSecretName)
+	controlPlane := createControlPlane(namespaced, baseDomain, pullSecretName, kubeconfig, kubeadminPassword)
 
 	Expect(c.Create(ctx, cluster)).To(BeNil())
 	Expect(c.Create(ctx, agentCluster)).To(BeNil())
@@ -117,14 +127,16 @@ func createDefaultResources(ctx context.Context, c client.Client, clusterName, t
 
 var _ = Describe("agentcluster reconcile", func() {
 	var (
-		c             client.Client
-		acr           *AgentClusterReconciler
-		ctx           = context.Background()
-		mockCtrl      *gomock.Controller
-		testNamespace = "test-namespace"
-		clusterName   = "test-cluster-name"
-		baseDomain    = "test.com"
-		pullSecret    = "pull-secret"
+		c                 client.Client
+		acr               *AgentClusterReconciler
+		ctx               = context.Background()
+		mockCtrl          *gomock.Controller
+		testNamespace     = "test-namespace"
+		clusterName       = "test-cluster-name"
+		baseDomain        = "test.com"
+		pullSecret        = "pull-secret"
+		kubeconfig        = "hostedKubeconfig"
+		kubeadminPassword = "kubeadmin"
 	)
 
 	BeforeEach(func() {
@@ -153,7 +165,7 @@ var _ = Describe("agentcluster reconcile", func() {
 		Expect(result).To(Equal(ctrl.Result{}))
 	})
 	It("agentCluster ready status", func() {
-		agentCluster := createDefaultResources(ctx, c, clusterName, testNamespace, baseDomain, pullSecret)
+		agentCluster := createDefaultResources(ctx, c, clusterName, testNamespace, baseDomain, pullSecret, kubeconfig, kubeadminPassword)
 		agentCluster.Status.Ready = true
 		Expect(c.Update(ctx, agentCluster)).To(BeNil())
 
@@ -162,7 +174,7 @@ var _ = Describe("agentcluster reconcile", func() {
 		Expect(result).To(Equal(ctrl.Result{}))
 	})
 	It("create clusterDeployment for agentCluster", func() {
-		agentCluster := createDefaultResources(ctx, c, clusterName, testNamespace, baseDomain, pullSecret)
+		agentCluster := createDefaultResources(ctx, c, clusterName, testNamespace, baseDomain, pullSecret, kubeconfig, kubeadminPassword)
 		result, err := acr.Reconcile(ctx, newAgentClusterRequest(agentCluster))
 		Expect(err).To(BeNil())
 		Expect(result).To(Equal(ctrl.Result{}))
@@ -180,6 +192,11 @@ var _ = Describe("agentcluster reconcile", func() {
 		Expect(clusterDeployment.Spec.BaseDomain).To(Equal(baseDomain))
 		Expect(clusterDeployment.Spec.PullSecretRef.Name).To(Equal(pullSecret))
 		Expect(clusterDeployment.Spec.ClusterName).To(Equal(clusterName))
+		Expect(clusterDeployment.Spec.ClusterMetadata.AdminPasswordSecretRef.Name).To(Equal(kubeadminPassword))
+		Expect(clusterDeployment.Spec.ClusterMetadata.AdminKubeconfigSecretRef.Name).To(Equal(kubeconfig))
+		Expect(clusterDeployment.Spec.ClusterMetadata.ClusterID).To(Equal(string(agentCluster.OwnerReferences[0].UID)))
+		Expect(clusterDeployment.Spec.ClusterMetadata.InfraID).To(Equal(string(agentCluster.OwnerReferences[0].UID)))
+
 	})
 	It("failed to find cluster", func() {
 		agentCluster := newAgentCluster("agentCluster-1", testNamespace, capiproviderv1alpha1.AgentClusterSpec{
@@ -222,7 +239,7 @@ var _ = Describe("agentcluster reconcile", func() {
 		Expect(result).To(Equal(ctrl.Result{Requeue: true}))
 	})
 	It("create AgentClusterInstall for agentCluster", func() {
-		agentCluster := createDefaultResources(ctx, c, "agentCluster-1", testNamespace, baseDomain, pullSecret)
+		agentCluster := createDefaultResources(ctx, c, "agentCluster-1", testNamespace, baseDomain, pullSecret, kubeconfig, kubeadminPassword)
 
 		_, _ = acr.Reconcile(ctx, newAgentClusterRequest(agentCluster))
 
